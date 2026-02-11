@@ -30,4 +30,24 @@ import org.opennms.netmgt.daemon.BaseOnmsMBean;
  * @version $Id: $
  */
 public interface EnhancedLinkdMBean extends BaseOnmsMBean {
+
+    long getActiveThreads();
+
+    long getTasksTotal();
+
+    long getTasksCompleted();
+
+    double getTaskCompletionRatio();
+
+    long getNumPoolThreads();
+
+    long getPeakPoolThreads();
+
+    long getCorePoolThreads();
+
+    long getMaxPoolThreads();
+
+    long getTaskQueuePendingCount();
+
+    long getTaskQueueRemainingCapacity();
 }

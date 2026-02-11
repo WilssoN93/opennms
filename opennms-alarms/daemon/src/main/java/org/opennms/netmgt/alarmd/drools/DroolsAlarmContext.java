@@ -458,8 +458,10 @@ public class DroolsAlarmContext extends ManagedDroolsContext implements AlarmLif
         if (alarm.getNode() != null) {
             // Allow rules to use the categories on the associated node
             Hibernate.initialize(alarm.getNode().getCategories());
-            // Allow rules to use metadata of the associated node
-            Hibernate.initialize(alarm.getNode().getMetaData());
+            // Node metadata init (NMS-15647) commented out: it causes a PersistentBag load for every alarm
+            // update and was not present in 32.x, leading to alarmd performance regressions. Rules that need
+            // alarm.getNode().getMetaData() will lazy-load it when the session is still open.
+            // Hibernate.initialize(alarm.getNode().getMetaData());
             // see NMS-16966
             sessionFactory.getCurrentSession().setReadOnly(alarm.getNode(), true);
         }
