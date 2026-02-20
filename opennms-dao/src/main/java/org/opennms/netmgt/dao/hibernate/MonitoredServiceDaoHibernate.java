@@ -22,6 +22,7 @@
 package org.opennms.netmgt.dao.hibernate;
 
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -145,5 +146,22 @@ public class MonitoredServiceDaoHibernate extends AbstractDaoHibernate<OnmsMonit
                     "left join fetch iface.node as node " +
                     "where node.id = ?",
                     nodeId);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public List<Integer> findAllServiceIds() {
+        // Only include services whose status is 'A' or 'N'
+        return findObjects(Integer.class, "select svc.m_id from OnmsMonitoredService as svc where svc.status in ('A','N')");
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public List<OnmsMonitoredService> findByIds(final List<Integer> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        return find("select distinct svc from OnmsMonitoredService as svc where svc.m_id in (?)", ids);
     }
 }

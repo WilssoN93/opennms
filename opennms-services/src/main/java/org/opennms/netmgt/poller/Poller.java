@@ -21,17 +21,8 @@
  */
 package org.opennms.netmgt.poller;
 
-import java.lang.reflect.UndeclaredThrowableException;
-import java.net.InetAddress;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
-
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Lists;
 import org.opennms.core.criteria.Criteria;
 import org.opennms.core.criteria.restrictions.InRestriction;
 import org.opennms.core.logging.Logging;
@@ -65,11 +56,19 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.transaction.TransactionStatus;
-import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionCallbackWithoutResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.google.common.annotations.VisibleForTesting;
+import java.lang.reflect.UndeclaredThrowableException;
+import java.net.InetAddress;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
 
 /**
  * <p>Poller class.</p>
@@ -115,7 +114,7 @@ public class Poller extends AbstractServiceDaemon {
 
     @Autowired
     private LocationAwarePollerClient m_locationAwarePollerClient;
-    
+
     @Autowired
     private ReadablePollOutagesDao m_pollOutagesDao;
 
@@ -253,7 +252,7 @@ public class Poller extends AbstractServiceDaemon {
     ReadablePollOutagesDao getPollOutagesDao() {
         return m_pollOutagesDao;
     }
-    
+
     @VisibleForTesting
     void setPollOutagesDao(ReadablePollOutagesDao pollOutagesDao) {
         m_pollOutagesDao = Objects.requireNonNull(pollOutagesDao);
@@ -284,7 +283,7 @@ public class Poller extends AbstractServiceDaemon {
     public void setServiceMonitorAdaptor(ServiceMonitorAdaptor serviceMonitorAdaptor) {
         this.serviceMonitorAdaptor = serviceMonitorAdaptor;
     }
-    
+
     /**
      * <p>onInit</p>
      */
@@ -376,10 +375,10 @@ public class Poller extends AbstractServiceDaemon {
      */
     @Override
     protected void onStop() {
-        if(getScheduler()!=null) {
+        if (getScheduler() != null) {
             getScheduler().stop();
         }
-        if(getEventProcessor()!=null) {
+        if (getEventProcessor() != null) {
             getEventProcessor().close();
         }
 
@@ -423,11 +422,12 @@ public class Poller extends AbstractServiceDaemon {
 
     /**
      * <p>scheduleService</p>
-     * @param nodeId a int.
-     * @param nodeLabel a {@link String} object.
+     *
+     * @param nodeId       a int.
+     * @param nodeLabel    a {@link String} object.
      * @param nodeLocation a {@link String} object.
-     * @param ipAddr a {@link String} object.
-     * @param svcName a {@link String} object.
+     * @param ipAddr       a {@link String} object.
+     * @param svcName      a {@link String} object.
      * @param pollableNode a {@link PollableNode} object
      */
     public void scheduleService(final int nodeId, final String nodeLabel, final String nodeLocation, final String ipAddr, final String svcName, PollableNode pollableNode) {
@@ -445,7 +445,7 @@ public class Poller extends AbstractServiceDaemon {
                     // In case of module reload, all existing PollableNodes gets deleted and re-created.
                     // It is necessary to retrieve the previous state of node and reset the change of status.
                     // Otherwise this may produce duplicate node down events, see NMS-12681
-                    if(pollableNode != null) {
+                    if (pollableNode != null) {
                         node.updateStatus(pollableNode.getStatus());
                         node.setCause(pollableNode.getCause());
                         node.resetStatusChanged();
@@ -479,16 +479,32 @@ public class Poller extends AbstractServiceDaemon {
         }
     }
 
-    private int scheduleServices() {
+    private static final int BATCH_SIZE = 2000;
+
+    private void scheduleServices() {
         final Criteria criteria = new Criteria(OnmsMonitoredService.class);
         criteria.addRestriction(new InRestriction("status", Arrays.asList("A", "N")));
+        List<Integer> serviceIds = m_monitoredServiceDao.findAllServiceIds();
 
-        final List<OnmsMonitoredService> services =  m_monitoredServiceDao.findMatching(criteria);
+        List<List<Integer>> batchServiceIds = Lists.partition(serviceIds, BATCH_SIZE);
         final Map<Integer, Set<OnmsOutage>> outagesByServiceId = m_outageDao.currentOutagesByServiceId();
-        for (OnmsMonitoredService service : services) {
-            scheduleService(service, outagesByServiceId.getOrDefault(service.getId(), Collections.emptySet()));
+        ExecutorService executor = getExecutorService();
+
+        for (List<Integer> batch : batchServiceIds) {
+            executor.execute(() -> scheduleServicesInBatch(batch, outagesByServiceId));
         }
-        return services.size();
+    }
+
+    private void scheduleServicesInBatch(List<Integer> ids, Map<Integer, Set<OnmsOutage>> outages) {
+        List<OnmsMonitoredService> services = m_monitoredServiceDao.findByIds(ids);
+
+        for (OnmsMonitoredService service : services) {
+            if (scheduleService(service, outages.getOrDefault(service.getId(), Collections.emptySet()))) {
+                LOG.debug("Successfully scheduled poller service {}, {}", service.getServiceId(), service.getServiceName());
+            } else {
+                LOG.error("Failed to schedule poller service {}, {}", service.getServiceId(), service.getServiceName());
+            }
+        }
     }
 
     private boolean scheduleService(OnmsMonitoredService service, Set<OnmsOutage> outages) {
@@ -506,7 +522,7 @@ public class Poller extends AbstractServiceDaemon {
 
         final Package pkg = this.findPackageForService(ipAddr, serviceName);
         if (pkg == null) {
-            if(active){
+            if (active) {
                 LOG.warn("Active service {} on {} not configured for any package. Marking as Not Polled.", serviceName, ipAddr);
                 updateServiceStatus(service, "N");
             }
@@ -525,10 +541,10 @@ public class Poller extends AbstractServiceDaemon {
 
         PollableService svc = getNetwork().createService(service.getNodeId(), iface.getNode().getLabel(), iface.getNode().getLocation().getLocationName(), addr, serviceName);
         PollableServiceConfig pollConfig = new PollableServiceConfig(svc, m_pollerConfig, pkg,
-                                                                     getScheduler(), m_persisterFactory, m_thresholdingService,
-                                                                     m_locationAwarePollerClient, m_pollOutagesDao, serviceMonitorAdaptor);
+                getScheduler(), m_persisterFactory, m_thresholdingService,
+                m_locationAwarePollerClient, m_pollOutagesDao, serviceMonitorAdaptor);
         svc.setPollConfig(pollConfig);
-        synchronized(svc) {
+        synchronized (svc) {
             if (svc.getSchedule() == null) {
                 Schedule schedule = new Schedule(svc, pollConfig, getScheduler());
                 svc.setSchedule(schedule);
@@ -572,15 +588,15 @@ public class Poller extends AbstractServiceDaemon {
     /**
      * This method should be called before scheduling services with outstanding
      * outages for the first time.
-     *
+     * <p>
      * If an outage is open, but has no lost service event, we will mark it as closed
      * with the current timestamp. This can happen if the poller daemon is stopped after
      * creating the outage record, but before the event was received back from the event bus.
-     *
+     * <p>
      * We close the outage immediately, as opposed to marking the service's initial state
      * as down since we do not know the cause, and determining the cause from the current
      * state of the database is error prone.
-     *
+     * <p>
      * Closing the outage immediately also prevents the daemon from creating
      * duplicate outstanding outage records.
      */

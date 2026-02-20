@@ -113,4 +113,19 @@ public interface MonitoredServiceDao extends LegacyOnmsDao<OnmsMonitoredService,
     OnmsMonitoredService getPrimaryService(Integer nodeId, String svcName);
 
     List<OnmsMonitoredService> findByNode(final int nodeId);
+
+    /**
+     * Fetch all OnmsMonitoredService IDs.
+     *
+     * @return a list of IDs for all monitored services.
+     */
+    List<Integer> findAllServiceIds();
+
+    /**
+     * Fetch all OnmsMonitoredService instances by their IDs.
+     *
+     * @param ids list of IDs to fetch
+     * @return list of OnmsMonitoredService matching the provided IDs
+     */
+    List<OnmsMonitoredService> findByIds(List<Integer> ids);
 }
