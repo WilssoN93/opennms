@@ -76,7 +76,18 @@ RUN groupadd \
 
 # If you copy from /opt/opennms to /opt/opennms the permissions are not preserved
 # We would have 755 for opennms:root instead of 775 and prevents writing lock files in /opt/opennms
-COPY --chown=10001:0 --from=core-tarball /opt/usr-share /opt
+# Split into multiple COPY layers so pushed image layers stay smaller.
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/lib /opt/opennms/lib
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/system /opt/opennms/system
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/jetty-webapps /opt/opennms/jetty-webapps
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/bin /opt/opennms/bin
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/agent /opt/opennms/agent
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/etc /opt/opennms/etc
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/share /opt/opennms/share
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/data /opt/opennms/data
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/logs /opt/opennms/logs
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/deploy /opt/opennms/deploy
+COPY --chown=10001:0 --from=core-tarball /opt/usr-share/opennms/licenses /opt/opennms/licenses
 
 COPY --chown=10001:0 --from=core-plugins /opt/usr-plugins /opt/opennms/deploy
 
