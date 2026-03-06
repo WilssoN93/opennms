@@ -22,9 +22,11 @@
 package org.opennms.netmgt.dao.mock;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +39,7 @@ import org.opennms.netmgt.dao.api.CountedObject;
 import org.opennms.netmgt.dao.api.EventCountDao;
 import org.opennms.netmgt.dao.api.EventDao;
 import org.opennms.netmgt.model.OnmsEvent;
+import org.opennms.netmgt.model.OnmsEventParameter;
 
 public class MockEventDao extends AbstractMockDao<OnmsEvent, Long> implements EventDao, EventCountDao {
     private AtomicLong m_id = new AtomicLong(0);
@@ -98,6 +101,22 @@ public class MockEventDao extends AbstractMockDao<OnmsEvent, Long> implements Ev
         }
 
         return stream.distinct().collect(Collectors.toList());
+    }
+
+    @Override
+    public Map<Long, List<OnmsEventParameter>> getParametersByEventIds(final Collection<Long> eventIds) {
+        if (eventIds == null || eventIds.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        final Set<Long> idSet = new HashSet<>(eventIds);
+        final Map<Long, List<OnmsEventParameter>> result = new LinkedHashMap<>();
+        for (final OnmsEvent event : findAll()) {
+            if (event.getId() != null && idSet.contains(event.getId())) {
+                final List<OnmsEventParameter> params = event.getEventParameters();
+                result.put(event.getId(), params == null ? new ArrayList<>() : new ArrayList<>(params));
+            }
+        }
+        return result;
     }
 
     @Override

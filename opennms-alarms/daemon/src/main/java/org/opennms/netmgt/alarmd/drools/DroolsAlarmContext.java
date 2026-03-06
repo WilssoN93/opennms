@@ -26,6 +26,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -52,10 +53,13 @@ import org.opennms.netmgt.alarmd.api.AlarmCallbackStateTracker;
 import org.opennms.netmgt.alarmd.api.AlarmLifecycleListener;
 import org.opennms.netmgt.dao.api.AcknowledgmentDao;
 import org.opennms.netmgt.dao.api.AlarmDao;
+import org.opennms.netmgt.dao.api.EventDao;
 import org.opennms.netmgt.model.AckAction;
 import org.opennms.netmgt.model.AlarmAssociation;
 import org.opennms.netmgt.model.OnmsAcknowledgment;
 import org.opennms.netmgt.model.OnmsAlarm;
+import org.opennms.netmgt.model.OnmsEvent;
+import org.opennms.netmgt.model.OnmsEventParameter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -107,6 +111,9 @@ public class DroolsAlarmContext extends ManagedDroolsContext implements AlarmLif
 
     @Autowired
     private AlarmDao alarmDao;
+
+    @Autowired
+    private EventDao eventDao;
 
     @Autowired
     private SessionFactory sessionFactory;
@@ -273,7 +280,8 @@ public class DroolsAlarmContext extends ManagedDroolsContext implements AlarmLif
                 .filter(a -> a.getId() != null)
                 .collect(Collectors.toMap(OnmsAlarm::getId, a -> a));
 
-        // Eagerly initialize the alarms
+        // Batch-load event parameters to avoid N+1, then eagerly initialize the alarms
+        batchLoadEventParametersForAlarms(alarms);
         for (OnmsAlarm alarm : alarms) {
             eagerlyInitializeAlarm(alarm);
         }
@@ -378,6 +386,7 @@ public class DroolsAlarmContext extends ManagedDroolsContext implements AlarmLif
             LOG.debug("Ignoring new/updated alarm. Drools session is stopped.");
             return;
         }
+        batchLoadEventParametersForAlarms(Collections.singletonList(alarm));
         eagerlyInitializeAlarm(alarm);
 
         // Retrieve the acks from the database for the set of the alarms we've been given
@@ -441,6 +450,40 @@ public class DroolsAlarmContext extends ManagedDroolsContext implements AlarmLif
                 })));
 
         return acksById;
+    }
+
+    /**
+     * Batch-loads event parameters for the last event of each alarm in a single query,
+     * and attaches them to the corresponding OnmsEvent. This avoids N+1 when
+     * eagerlyInitializeAlarm later accesses getEventParameters().
+     */
+    private void batchLoadEventParametersForAlarms(Collection<OnmsAlarm> alarms) {
+        final List<Long> eventIds = alarms.stream()
+                .map(OnmsAlarm::getLastEvent)
+                .filter(Objects::nonNull)
+                .map(OnmsEvent::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        if (eventIds.isEmpty()) {
+            return;
+        }
+        final Map<Long, List<OnmsEventParameter>> paramsByEventId = eventDao.getParametersByEventIds(eventIds);
+        for (OnmsAlarm alarm : alarms) {
+            final OnmsEvent lastEvent = alarm.getLastEvent();
+            if (lastEvent == null) {
+                continue;
+            }
+            final Long eventId = lastEvent.getId();
+            if (eventId == null) {
+                continue;
+            }
+            final List<OnmsEventParameter> params = paramsByEventId.getOrDefault(eventId, Collections.emptyList());
+            for (OnmsEventParameter p : params) {
+                p.setEvent(lastEvent);
+            }
+            lastEvent.setEventParameters(params.isEmpty() ? new ArrayList<>() : new ArrayList<>(params));
+        }
     }
 
     private void eagerlyInitializeAlarm(OnmsAlarm alarm) {

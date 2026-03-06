@@ -689,7 +689,10 @@ public class JdbcFilterDao implements FilterDao, InitializingBean {
                 } else if (regex.group().startsWith("notis")) {
                     regex.appendReplacement(tempStringBuff, m_databaseSchemaConfigFactory.addColumn(tables, "ipAddr") + " NOT IN (SELECT ifServices.ipAddr FROM ifServices, service WHERE service.serviceName ='" + regex.group().substring(5) + "' AND service.serviceID = ifServices.serviceID)");
                 } else if (regex.group().startsWith("catinc")) {
-                    regex.appendReplacement(tempStringBuff, m_databaseSchemaConfigFactory.addColumn(tables, "nodeID") + " IN (SELECT category_node.nodeID FROM category_node, categories WHERE categories.categoryID = category_node.categoryID AND categories.categoryName = '" + regex.group().substring(6) + "')");
+                    String categoryName = regex.group().substring(6).replace("'", "''");
+                    String nodeIdColumn = m_databaseSchemaConfigFactory.addColumn(tables, "nodeID");
+                    String replacement = "EXISTS (SELECT 1 FROM category_node cn JOIN categories c ON c.categoryID = cn.categoryID WHERE c.categoryName = '" + categoryName + "' AND cn.nodeID = " + nodeIdColumn + ")";
+                    regex.appendReplacement(tempStringBuff, Matcher.quoteReplacement(replacement));
                 } else if (regex.group().matches(SQL_IPLIKE6_RHS_REGEX)) {
                     // Do nothing, it's apparently an IPv6 IPLIKE expression right-hand side
                 } else {
