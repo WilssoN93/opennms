@@ -21,11 +21,13 @@
  */
 package org.opennms.netmgt.dao.api;
 
+import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
 import org.opennms.netmgt.model.OnmsEvent;
+import org.opennms.netmgt.model.OnmsEventParameter;
 
 public interface EventDao extends LegacyOnmsDao<OnmsEvent, Long> {
 
@@ -43,6 +45,16 @@ public interface EventDao extends LegacyOnmsDao<OnmsEvent, Long> {
     List<OnmsEvent> getEventsAfterDate(List<String> ueiList, Date date);
 
     List<OnmsEvent> getEventsForEventParameters(final Map<String, String> eventParameters);
+
+    /**
+     * Batch-load event parameters for the given event IDs in a single query.
+     * Returns a map from event ID to list of parameters (ordered by position).
+     * Callers can attach these lists to OnmsEvent entities to avoid N+1 lazy loads.
+     *
+     * @param eventIds event IDs to load parameters for (must not be null)
+     * @return map from eventId to list of OnmsEventParameter; empty map if eventIds is empty
+     */
+    Map<Long, List<OnmsEventParameter>> getParametersByEventIds(Collection<Long> eventIds);
 
     long getNumEventsLastHours(int hours );
 }

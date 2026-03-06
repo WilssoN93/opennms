@@ -39,7 +39,6 @@ import com.google.common.collect.Sets;
 import org.hibernate.Criteria;
 import org.hibernate.EntityMode;
 import org.hibernate.HibernateException;
-import org.hibernate.LockMode;
 import org.hibernate.Query;
 import org.hibernate.Session;
 import org.hibernate.criterion.Projections;
@@ -84,7 +83,21 @@ public abstract class AbstractDaoHibernate<T, K extends Serializable> extends Hi
     /** {@inheritDoc} */
     @Override
     public void lock() {
-        getHibernateTemplate().get(AccessLock.class, m_lockName, LockMode.PESSIMISTIC_WRITE);
+        getHibernateTemplate().execute((HibernateCallback<Void>) session -> {
+            final long key = computeAdvisoryLockKey(m_lockName);
+            session.createSQLQuery("SELECT pg_advisory_xact_lock(:key)").setParameter("key", key).uniqueResult();
+            return null;
+        });
+    }
+
+    /**
+     * Compute a 64-bit key for PostgreSQL advisory lock from the lock name.
+     * Deterministic and avoids collisions for the small set of DAO lock names.
+     */
+    private static long computeAdvisoryLockKey(final String lockName) {
+        final int hash = lockName != null ? lockName.hashCode() : 0;
+        final int len = lockName != null ? lockName.length() : 0;
+        return ((long) (hash & 0xFFFFFFFFL) << 32) | (len & 0xFFFFFFFFL);
     }
 
     /** {@inheritDoc} */
