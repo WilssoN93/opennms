@@ -38,6 +38,7 @@ import javax.persistence.Table;
 import com.google.common.collect.Sets;
 import org.hibernate.Criteria;
 import org.hibernate.EntityMode;
+import org.hibernate.Hibernate;
 import org.hibernate.HibernateException;
 import org.hibernate.Query;
 import org.hibernate.Session;
@@ -85,7 +86,11 @@ public abstract class AbstractDaoHibernate<T, K extends Serializable> extends Hi
     public void lock() {
         getHibernateTemplate().execute((HibernateCallback<Void>) session -> {
             final long key = computeAdvisoryLockKey(m_lockName);
-            session.createSQLQuery("SELECT pg_advisory_xact_lock(:key)").setParameter("key", key).uniqueResult();
+            // pg_advisory_xact_lock returns void (JDBC type 1111/OTHER); declare scalar so Hibernate does not need a dialect mapping
+            session.createSQLQuery("SELECT pg_advisory_xact_lock(:key) AS lock_result")
+                    .addScalar("lock_result", Hibernate.INTEGER)
+                    .setParameter("key", key)
+                    .uniqueResult();
             return null;
         });
     }
