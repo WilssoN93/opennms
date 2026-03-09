@@ -378,7 +378,7 @@ public class SituationsRestService extends AlarmRestService {
     private Set<OnmsAlarm> loadValidAlarms(List<Integer> ids, UriInfo uriInfo) throws InterruptedException {
         Set<OnmsAlarm> alarms = new HashSet<>();
         for (Integer id : ids) {
-            OnmsAlarm alarm = getDao().load(id);
+            OnmsAlarm alarm = getDao().getWithLastEventParameters(id);
             if (alarm != null && alarmIsNotInAnotherSituation(alarm.getReductionKey(), uriInfo)) {
                 alarms.add(alarm);
             }
@@ -400,7 +400,7 @@ public class SituationsRestService extends AlarmRestService {
 
     protected List<OnmsAlarm> fetchAllSituationAlarms(UriInfo uriInfo) {
         CriteriaBuilder builder = getCriteriaBuilder(uriInfo);
-        return getDao().findMatching(builder.toCriteria());
+        return getDao().findMatchingWithLastEventParameters(builder.toCriteria());
     }
 
     public static OnmsAlarm getAlarmForDescription(final Collection<OnmsAlarm> alarms) {

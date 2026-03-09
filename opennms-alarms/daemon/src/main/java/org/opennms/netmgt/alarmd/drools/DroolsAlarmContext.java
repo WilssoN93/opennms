@@ -46,6 +46,7 @@ import org.hibernate.ObjectNotFoundException;
 import org.hibernate.SessionFactory;
 import org.kie.api.runtime.KieSession;
 import org.kie.api.runtime.rule.FactHandle;
+import org.opennms.core.criteria.CriteriaBuilder;
 import org.opennms.core.sysprops.SystemProperties;
 import org.opennms.core.utils.ConfigFileConstants;
 import org.opennms.netmgt.alarmd.Alarmd;
@@ -195,7 +196,7 @@ public class DroolsAlarmContext extends ManagedDroolsContext implements AlarmLif
                     @Override
                     protected void doInTransactionWithoutResult(TransactionStatus status) {
                         LOG.info("Loading all alarms to seed Drools context.");
-                        final List<OnmsAlarm> allAlarms = alarmDao.findAll();
+                        final List<OnmsAlarm> allAlarms = alarmDao.findMatchingWithLastEventParameters(new CriteriaBuilder(OnmsAlarm.class).toCriteria());
                         LOG.info("Done loading {} alarms.", allAlarms.size());
                         // Leverage the existing snapshot processing function to see the engine
                         handleAlarmSnapshot(allAlarms);
@@ -280,8 +281,7 @@ public class DroolsAlarmContext extends ManagedDroolsContext implements AlarmLif
                 .filter(a -> a.getId() != null)
                 .collect(Collectors.toMap(OnmsAlarm::getId, a -> a));
 
-        // Batch-load event parameters to avoid N+1, then eagerly initialize the alarms
-        batchLoadEventParametersForAlarms(alarms);
+        // Snapshot lists are loaded with lastEvent params via findMatchingWithLastEventParameters; eagerly initialize alarms
         for (OnmsAlarm alarm : alarms) {
             eagerlyInitializeAlarm(alarm);
         }

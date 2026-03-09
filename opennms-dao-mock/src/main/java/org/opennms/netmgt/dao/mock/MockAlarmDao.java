@@ -21,16 +21,22 @@
  */
 package org.opennms.netmgt.dao.mock;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.opennms.core.criteria.Criteria;
 import org.opennms.netmgt.dao.api.AlarmDao;
 import org.opennms.netmgt.model.HeatMapElement;
 import org.opennms.netmgt.model.OnmsAlarm;
 import org.opennms.netmgt.model.OnmsDistPoller;
+import org.opennms.netmgt.model.OnmsEvent;
+import org.opennms.netmgt.model.OnmsEventParameter;
 import org.opennms.netmgt.model.alarm.AlarmSummary;
 import org.opennms.netmgt.model.alarm.SituationSummary;
 
@@ -127,5 +133,50 @@ public class MockAlarmDao extends AbstractMockDao<OnmsAlarm, Integer> implements
         }
 
         return stream.distinct().collect(Collectors.toList());
+    }
+
+    @Override
+    public List<OnmsAlarm> findMatchingWithLastEventParameters(Criteria criteria) {
+        final List<OnmsAlarm> alarms = findMatching(criteria);
+        attachLastEventParameters(alarms);
+        return alarms;
+    }
+
+    @Override
+    public OnmsAlarm getWithLastEventParameters(Integer id) {
+        final OnmsAlarm alarm = get(id);
+        if (alarm != null) {
+            attachLastEventParameters(Collections.singletonList(alarm));
+        }
+        return alarm;
+    }
+
+    private void attachLastEventParameters(Collection<OnmsAlarm> alarms) {
+        final List<Long> eventIds = alarms.stream()
+                .map(OnmsAlarm::getLastEvent)
+                .filter(e -> e != null)
+                .map(OnmsEvent::getId)
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        if (eventIds.isEmpty()) {
+            return;
+        }
+        final Map<Long, List<OnmsEventParameter>> paramsByEventId = getEventDao().getParametersByEventIds(eventIds);
+        for (OnmsAlarm alarm : alarms) {
+            final OnmsEvent lastEvent = alarm.getLastEvent();
+            if (lastEvent == null) {
+                continue;
+            }
+            final Long eventId = lastEvent.getId();
+            if (eventId == null) {
+                continue;
+            }
+            final List<OnmsEventParameter> params = paramsByEventId.getOrDefault(eventId, Collections.emptyList());
+            for (OnmsEventParameter p : params) {
+                p.setEvent(lastEvent);
+            }
+            lastEvent.setEventParameters(params.isEmpty() ? new ArrayList<>() : new ArrayList<>(params));
+        }
     }
 }

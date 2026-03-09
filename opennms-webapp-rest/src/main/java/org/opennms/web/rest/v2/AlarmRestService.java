@@ -21,19 +21,24 @@
  */
 package org.opennms.web.rest.v2;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
+import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -41,14 +46,18 @@ import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.UriInfo;
 
+import org.apache.cxf.jaxrs.ext.search.SearchContext;
+
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.cxf.jaxrs.ext.search.SearchBean;
 import org.opennms.core.config.api.JaxbListWrapper;
 import org.opennms.core.criteria.Alias.JoinType;
+import org.opennms.core.criteria.Criteria;
 import org.opennms.core.criteria.CriteriaBuilder;
 import org.opennms.core.criteria.Fetch.FetchType;
+import org.opennms.core.criteria.Order;
 import org.opennms.core.criteria.restrictions.Restrictions;
 import org.opennms.core.resource.Vault;
 import org.opennms.netmgt.dao.api.AcknowledgmentDao;
@@ -182,8 +191,33 @@ public class AlarmRestService extends AbstractDaoRestServiceWithDTO<OnmsAlarm,Al
     }
 
     @Override
+    @GET
+    @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML, MediaType.APPLICATION_ATOM_XML})
+    public Response get(@Context final UriInfo uriInfo, @Context final SearchContext searchContext) {
+        Criteria crit = getCriteria(uriInfo, searchContext);
+        final List<OnmsAlarm> coll = getDao().findMatchingWithLastEventParameters(crit);
+        if (coll == null || coll.size() < 1) {
+            return Response.status(Status.NO_CONTENT).build();
+        } else {
+            Integer offset = crit.getOffset();
+            crit.setLimit(null);
+            crit.setOffset(null);
+            crit.setOrders(new ArrayList<Order>());
+            int totalCount = getDao().countMatching(crit);
+            final List<AlarmDTO> collOfDtos = coll.stream()
+                    .map(this::mapEntityToDTO)
+                    .collect(Collectors.toList());
+            final JaxbListWrapper<AlarmDTO> list = createListWrapper(collOfDtos);
+            list.setTotalCount(totalCount);
+            list.setOffset(offset);
+            offset = (offset == null ? 0 : offset);
+            return Response.ok(list).header("Content-Range", String.format("items %d-%d/%d", offset, offset + coll.size() - 1, totalCount)).build();
+        }
+    }
+
+    @Override
     protected OnmsAlarm doGet(UriInfo uriInfo, Integer id) {
-        return getDao().get(id);
+        return getDao().getWithLastEventParameters(id);
     }
 
     @Override

@@ -25,21 +25,26 @@ import java.math.BigInteger;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.hibernate.HibernateException;
 import org.hibernate.Query;
 import org.hibernate.Session;
 import org.hibernate.transform.ResultTransformer;
 import org.hibernate.type.StringType;
+import org.opennms.core.criteria.Criteria;
 import org.opennms.netmgt.dao.api.AlarmDao;
+import org.opennms.netmgt.dao.api.EventDao;
 import org.opennms.netmgt.model.HeatMapElement;
 import org.opennms.netmgt.model.OnmsAlarm;
 import org.opennms.netmgt.model.OnmsCategory;
 import org.opennms.netmgt.model.OnmsEvent;
+import org.opennms.netmgt.model.OnmsEventParameter;
 import org.opennms.netmgt.model.OnmsIpInterface;
 import org.opennms.netmgt.model.OnmsIpInterfaceList;
 import org.opennms.netmgt.model.OnmsMonitoredService;
@@ -48,6 +53,7 @@ import org.opennms.netmgt.model.OnmsServiceType;
 import org.opennms.netmgt.model.OnmsSeverity;
 import org.opennms.netmgt.model.alarm.AlarmSummary;
 import org.opennms.netmgt.model.alarm.SituationSummary;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.orm.hibernate3.HibernateCallback;
 
 import com.google.common.collect.Lists;
@@ -60,8 +66,60 @@ import com.google.common.collect.Lists;
  */
 public class AlarmDaoHibernate extends AbstractDaoHibernate<OnmsAlarm, Integer> implements AlarmDao {
 
+    @Autowired
+    private EventDao m_eventDao;
+
     public AlarmDaoHibernate() {
         super(OnmsAlarm.class);
+    }
+
+    @Override
+    public List<OnmsAlarm> findMatchingWithLastEventParameters(Criteria criteria) {
+        final List<OnmsAlarm> alarms = findMatching(criteria);
+        attachLastEventParameters(alarms);
+        return alarms;
+    }
+
+    @Override
+    public OnmsAlarm getWithLastEventParameters(Integer id) {
+        final OnmsAlarm alarm = get(id);
+        if (alarm != null) {
+            attachLastEventParameters(Collections.singletonList(alarm));
+        }
+        return alarm;
+    }
+
+    /**
+     * Batch-loads event parameters for the last event of each alarm and attaches them.
+     * Avoids N+1 when callers later access lastEvent.getEventParameters().
+     */
+    private void attachLastEventParameters(Collection<OnmsAlarm> alarms) {
+        final List<Long> eventIds = alarms.stream()
+                .map(OnmsAlarm::getLastEvent)
+                .filter(e -> e != null)
+                .map(OnmsEvent::getId)
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        if (eventIds.isEmpty()) {
+            return;
+        }
+        final Map<Long, List<OnmsEventParameter>> paramsByEventId = m_eventDao.getParametersByEventIds(eventIds);
+        for (OnmsAlarm alarm : alarms) {
+            final OnmsEvent lastEvent = alarm.getLastEvent();
+            if (lastEvent == null) {
+                continue;
+            }
+            final Long eventId = lastEvent.getId();
+            if (eventId == null) {
+                continue;
+            }
+            final List<OnmsEventParameter> params = paramsByEventId.getOrDefault(eventId, Collections.emptyList());
+            for (OnmsEventParameter p : params) {
+                p.setEvent(lastEvent);
+            }
+            lastEvent.setEventParameters(params.isEmpty() ? new ArrayList<>() : new ArrayList<>(params));
+        }
     }
 
     /** {@inheritDoc} */

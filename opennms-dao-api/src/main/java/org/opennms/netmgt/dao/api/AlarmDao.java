@@ -24,6 +24,7 @@ package org.opennms.netmgt.dao.api;
 import java.util.List;
 import java.util.Map;
 
+import org.opennms.core.criteria.Criteria;
 import org.opennms.netmgt.model.HeatMapElement;
 import org.opennms.netmgt.model.OnmsAlarm;
 import org.opennms.netmgt.model.alarm.AlarmSummary;
@@ -62,6 +63,23 @@ public interface AlarmDao extends LegacyOnmsDao<OnmsAlarm, Integer> {
     List<HeatMapElement> getHeatMapItemsForEntity(String entityNameColumn, String entityIdColumn, boolean processAcknowledgedAlarms, String restrictionColumn, String restrictionValue, String... groupByColumns);
 
     List<OnmsAlarm> getAlarmsForEventParameters(final Map<String, String> eventParameters);
+
+    /**
+     * Same semantics as {@link #findMatching(org.opennms.core.criteria.Criteria)} but each alarm's
+     * lastEvent has eventParameters already loaded (no extra queries when later accessing them).
+     *
+     * @param criteria the criteria to match
+     * @return list of alarms with lastEvent.eventParameters populated
+     */
+    List<OnmsAlarm> findMatchingWithLastEventParameters(Criteria criteria);
+
+    /**
+     * Same as {@link #get(Integer)} but with lastEvent.eventParameters loaded.
+     *
+     * @param id alarm id
+     * @return the alarm with lastEvent.eventParameters populated, or null if not found
+     */
+    OnmsAlarm getWithLastEventParameters(Integer id);
 
     /**
      * Returns the number of situations currently present in the database.

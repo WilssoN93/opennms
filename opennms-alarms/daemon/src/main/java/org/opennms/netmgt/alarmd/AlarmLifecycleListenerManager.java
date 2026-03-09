@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
+import org.opennms.core.criteria.CriteriaBuilder;
 import org.opennms.core.sysprops.SystemProperties;
 import org.opennms.netmgt.alarmd.api.AlarmLifecycleListener;
 import org.opennms.netmgt.dao.api.AlarmDao;
@@ -99,8 +100,8 @@ public class AlarmLifecycleListenerManager implements AlarmEntityListener, Initi
         try {
             forEachListener(AlarmLifecycleListener::preHandleAlarmSnapshot);
             sessionUtils.withTransaction(() -> {
-               // Load all of the alarms
-               final List<OnmsAlarm> allAlarms = alarmDao.findAll();
+               // Load all alarms with lastEvent parameters to avoid N+1 in listeners
+               final List<OnmsAlarm> allAlarms = alarmDao.findMatchingWithLastEventParameters(new CriteriaBuilder(OnmsAlarm.class).toCriteria());
                numAlarms.set(allAlarms.size());
                // Save the timestamp after the load, so we can differentiate between how long it took
                // to load the alarms and how long it took to invoke the callbacks
