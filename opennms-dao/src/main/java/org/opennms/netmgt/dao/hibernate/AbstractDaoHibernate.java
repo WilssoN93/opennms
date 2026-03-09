@@ -86,8 +86,8 @@ public abstract class AbstractDaoHibernate<T, K extends Serializable> extends Hi
     public void lock() {
         getHibernateTemplate().execute((HibernateCallback<Void>) session -> {
             final long key = computeAdvisoryLockKey(m_lockName);
-            // pg_advisory_xact_lock returns void (JDBC type 1111/OTHER); declare scalar so Hibernate does not need a dialect mapping
-            session.createSQLQuery("SELECT pg_advisory_xact_lock(:key) AS lock_result")
+            // pg_advisory_xact_lock returns void; run it for side effect but return a literal int so JDBC/Hibernate can read the result
+            session.createSQLQuery("SELECT 1 AS lock_result FROM (SELECT pg_advisory_xact_lock(:key)) AS advisory")
                     .addScalar("lock_result", Hibernate.INTEGER)
                     .setParameter("key", key)
                     .uniqueResult();
