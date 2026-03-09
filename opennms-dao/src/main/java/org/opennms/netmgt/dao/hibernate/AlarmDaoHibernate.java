@@ -30,9 +30,12 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.hibernate.HibernateException;
+import org.hibernate.ObjectNotFoundException;
 import org.hibernate.Query;
 import org.hibernate.Session;
 import org.hibernate.transform.ResultTransformer;
@@ -53,6 +56,8 @@ import org.opennms.netmgt.model.OnmsServiceType;
 import org.opennms.netmgt.model.OnmsSeverity;
 import org.opennms.netmgt.model.alarm.AlarmSummary;
 import org.opennms.netmgt.model.alarm.SituationSummary;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.orm.hibernate3.HibernateCallback;
 
@@ -65,6 +70,8 @@ import com.google.common.collect.Lists;
  * @version $Id: $
  */
 public class AlarmDaoHibernate extends AbstractDaoHibernate<OnmsAlarm, Integer> implements AlarmDao {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AlarmDaoHibernate.class);
 
     @Autowired
     private EventDao m_eventDao;
@@ -90,15 +97,32 @@ public class AlarmDaoHibernate extends AbstractDaoHibernate<OnmsAlarm, Integer> 
     }
 
     /**
+     * Returns the alarm's last event if it still exists in the database.
+     * Empty when lastEvent is null or when the referenced event was deleted (e.g. by event pruning).
+     */
+    private Optional<OnmsEvent> getLastEventSafe(OnmsAlarm alarm) {
+        try {
+            final OnmsEvent e = alarm.getLastEvent();
+            if (e != null && e.getId() != null) {
+                return Optional.of(e);
+            }
+            return Optional.empty();
+        } catch (ObjectNotFoundException e) {
+            LOG.debug("Alarm {} references deleted event (lastEventId), skipping", alarm.getId(), e);
+            return Optional.empty();
+        }
+    }
+
+    /**
      * Batch-loads event parameters for the last event of each alarm and attaches them.
      * Avoids N+1 when callers later access lastEvent.getEventParameters().
+     * Tolerates alarms whose lastEvent was deleted (e.g. by event pruning) by skipping them.
      */
     private void attachLastEventParameters(Collection<OnmsAlarm> alarms) {
         final List<Long> eventIds = alarms.stream()
-                .map(OnmsAlarm::getLastEvent)
-                .filter(e -> e != null)
+                .flatMap(a -> getLastEventSafe(a).stream())
                 .map(OnmsEvent::getId)
-                .filter(id -> id != null)
+                .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
         if (eventIds.isEmpty()) {
@@ -106,19 +130,14 @@ public class AlarmDaoHibernate extends AbstractDaoHibernate<OnmsAlarm, Integer> 
         }
         final Map<Long, List<OnmsEventParameter>> paramsByEventId = m_eventDao.getParametersByEventIds(eventIds);
         for (OnmsAlarm alarm : alarms) {
-            final OnmsEvent lastEvent = alarm.getLastEvent();
-            if (lastEvent == null) {
-                continue;
-            }
-            final Long eventId = lastEvent.getId();
-            if (eventId == null) {
-                continue;
-            }
-            final List<OnmsEventParameter> params = paramsByEventId.getOrDefault(eventId, Collections.emptyList());
-            for (OnmsEventParameter p : params) {
-                p.setEvent(lastEvent);
-            }
-            lastEvent.setEventParameters(params.isEmpty() ? new ArrayList<>() : new ArrayList<>(params));
+            getLastEventSafe(alarm).ifPresent(lastEvent -> {
+                final Long eventId = lastEvent.getId();
+                final List<OnmsEventParameter> params = paramsByEventId.getOrDefault(eventId, Collections.emptyList());
+                for (OnmsEventParameter p : params) {
+                    p.setEvent(lastEvent);
+                }
+                lastEvent.setEventParameters(params.isEmpty() ? new ArrayList<>() : new ArrayList<>(params));
+            });
         }
     }
 
