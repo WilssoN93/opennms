@@ -31,6 +31,7 @@ import org.apache.karaf.shell.api.action.Command;
 import org.apache.karaf.shell.api.action.Option;
 import org.apache.karaf.shell.api.action.lifecycle.Reference;
 import org.apache.karaf.shell.api.action.lifecycle.Service;
+import org.opennms.core.criteria.CriteriaBuilder;
 import org.opennms.features.kafka.producer.datasync.AlarmDataStore;
 import org.opennms.features.kafka.producer.datasync.AlarmSyncResults;
 import org.opennms.netmgt.dao.api.AlarmDao;
@@ -66,8 +67,8 @@ public class SyncAlarms implements Action {
         }
 
         return sessionUtils.withReadOnlyTransaction(() -> {
-            // Retrieve all of the alarms from the database
-            final List<OnmsAlarm> alarmsInDb = alarmDao.findAll();
+            // Retrieve all of the alarms from the database with lastEvent parameters loaded to avoid N+1 when mapping to protobuf
+            final List<OnmsAlarm> alarmsInDb = alarmDao.findMatchingWithLastEventParameters(new CriteriaBuilder(OnmsAlarm.class).toCriteria());
             System.out.println("Performing synchronization of alarms from the database with those in the ktable.");
             final long start = System.currentTimeMillis();
             final AlarmSyncResults results = alarmDataStore.handleAlarmSnapshot(alarmsInDb);
