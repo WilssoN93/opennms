@@ -189,4 +189,23 @@
                 constraintName="uk_eventconf_sources_name"/>
     </changeSet>
 
+    <!-- Indexes to speed up filter queries that filter by displayCategory or pollerCategory (e.g. surveillance views, node mapping). -->
+    <changeSet author="opennms" id="35.0.0-assets-displaycategory-pollercategory-indexes">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="assets"/>
+        </preConditions>
+        <createIndex tableName="assets" indexName="idx_assets_displaycategory_nodeid">
+            <column name="displaycategory"/>
+            <column name="nodeid"/>
+        </createIndex>
+        <createIndex tableName="assets" indexName="idx_assets_pollercategory_nodeid">
+            <column name="pollercategory"/>
+            <column name="nodeid"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="assets" indexName="idx_assets_displaycategory_nodeid"/>
+            <dropIndex tableName="assets" indexName="idx_assets_pollercategory_nodeid"/>
+        </rollback>
+    </changeSet>
+
 </databaseChangeLog>
