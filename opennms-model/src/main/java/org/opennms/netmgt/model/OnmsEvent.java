@@ -439,10 +439,14 @@ public class OnmsEvent extends OnmsEntity implements Serializable {
 	@XmlElementWrapper(name="parameters")
 	@XmlElement(name="parameter")
 	public List<OnmsEventParameter> getEventParameters() {
-		if(this.eventParameters != null) {
-			this.eventParameters.sort(Comparator.comparing(OnmsEventParameter::getPosition));
+		if (this.eventParameters == null) {
+			return null;
 		}
-		return this.eventParameters;
+		// Return a sorted copy to avoid ConcurrentModificationException when Hibernate
+		// is iterating this collection during flush/cascade (e.g. from alarmd lifecycle listeners).
+		List<OnmsEventParameter> sorted = new ArrayList<>(this.eventParameters);
+		sorted.sort(Comparator.comparing(OnmsEventParameter::getPosition));
+		return sorted;
 	}
 
 	public void setEventParameters(List<OnmsEventParameter> eventParameters) {
