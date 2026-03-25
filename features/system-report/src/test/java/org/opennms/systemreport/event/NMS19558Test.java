@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Date;
 
 import static org.junit.Assert.assertEquals;
@@ -35,9 +36,10 @@ public class NMS19558Test {
             for (int i = 0; i < 310; i++) {
                 csvPrinter.printRecord("admin", "2025-01-01 20:00:00");
             }
-            csvPrinter.printRecord("admin", CsvUtils.DATE_FORMAT.format(new Date()));
-            csvPrinter.printRecord("admin", CsvUtils.DATE_FORMAT.format(new Date()));
-            csvPrinter.printRecord("admin", CsvUtils.DATE_FORMAT.format(new Date()));
+            String nowFormatted = Instant.now().atZone(ZoneId.systemDefault()).toLocalDateTime().format(CsvUtils.DATE_FORMAT);
+            csvPrinter.printRecord("admin", nowFormatted);
+            csvPrinter.printRecord("admin", nowFormatted);
+            csvPrinter.printRecord("admin", nowFormatted);
             csvPrinter.flush();
         }
     }
