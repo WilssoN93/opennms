@@ -238,6 +238,7 @@ public class PerspectivePollerd implements SpringServiceDaemon, PerspectiveServi
         }
 
         // Build perspective polled services
+        final int ifServiceId = service.getId() != null ? service.getId() : 1;
         final PerspectivePolledService perspectivePolledService = new PerspectivePolledService(service.getNodeId(),
                                                                                                service.getIpAddress(),
                                                                                                service.getServiceName(),
@@ -250,7 +251,8 @@ public class PerspectivePollerd implements SpringServiceDaemon, PerspectiveServi
                                                                                                servicePerspective.getPerspectiveLocation(),
                                                                                                node.getLocation().getLocationName(),
                                                                                                rrdRepository.orElse(null),
-                                                                                               thresholdingSession);
+                                                                                               thresholdingSession,
+                                                                                               ifServiceId);
 
         // Build job for scheduler
         final JobDetail job = JobBuilder

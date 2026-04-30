@@ -71,6 +71,9 @@ public class PollerRequestDTO implements RpcRequest, PollerRequest{
     @XmlAttribute(name = "node-location")
     private String nodeLocation;
 
+    @XmlAttribute(name = "if-service-id")
+    private Integer ifServiceId;
+
     @XmlElement(name = "attribute")
     private List<PollerAttributeDTO> attributes = new ArrayList<>();
 
@@ -158,6 +161,15 @@ public class PollerRequestDTO implements RpcRequest, PollerRequest{
         this.nodeLocation = nodeLocation;
     }
 
+    @Override
+    public int getIfServiceId() {
+        return (ifServiceId != null && ifServiceId > 0) ? ifServiceId : 1;
+    }
+
+    public void setIfServiceId(int ifServiceId) {
+        this.ifServiceId = ifServiceId;
+    }
+
     public List<PollerAttributeDTO> getAttributes() {
         return attributes;
     }
@@ -223,6 +235,7 @@ public class PollerRequestDTO implements RpcRequest, PollerRequest{
                 && Objects.equals(address, castOther.address)
                 && Objects.equals(nodeId, castOther.nodeId)
                 && Objects.equals(nodeLabel, castOther.nodeLabel)
+                && Objects.equals(ifServiceId, castOther.ifServiceId)
                 && Objects.equals(timeToLiveMs, castOther.timeToLiveMs)
                 && Objects.equals(attributes, castOther.attributes);
     }
@@ -230,7 +243,7 @@ public class PollerRequestDTO implements RpcRequest, PollerRequest{
     @Override
     public int hashCode() {
         return Objects.hash(location, systemId, className, serviceName,
-                address, nodeId, nodeLabel, attributes, timeToLiveMs);
+                address, nodeId, nodeLabel, ifServiceId, attributes, timeToLiveMs);
     }
 
 }

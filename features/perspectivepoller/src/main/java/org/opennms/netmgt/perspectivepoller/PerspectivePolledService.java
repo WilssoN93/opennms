@@ -60,6 +60,8 @@ public class PerspectivePolledService {
 
     private final ThresholdingSession thresholdingSession;
 
+    private final int ifServiceId;
+
     private final MonitoredService monitoredService;
 
     private PollStatus lastStatus;
@@ -76,7 +78,8 @@ public class PerspectivePolledService {
                                     final String perspectiveLocation,
                                     final String residentLocation,
                                     final RrdRepository rrdRepository,
-                                    final ThresholdingSession thresholdingSession) {
+                                    final ThresholdingSession thresholdingSession,
+                                    final int ifServiceId) {
         this.nodeId = Objects.requireNonNull(nodeId);
         this.ipAddress = Objects.requireNonNull(ipAddress);
         this.serviceName = Objects.requireNonNull(serviceName);
@@ -90,6 +93,7 @@ public class PerspectivePolledService {
         this.residentLocation = Objects.requireNonNull(residentLocation);
         this.rrdRepository = rrdRepository;
         this.thresholdingSession = thresholdingSession;
+        this.ifServiceId = ifServiceId;
 
         this.monitoredService = new MonitoredService() {
             @Override
@@ -122,6 +126,11 @@ public class PerspectivePolledService {
             @Override
             public InetAddress getAddress() {
                 return ipAddress;
+            }
+
+            @Override
+            public int getIfServiceId() {
+                return ifServiceId;
             }
         };
     }

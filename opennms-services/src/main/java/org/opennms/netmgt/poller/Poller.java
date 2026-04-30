@@ -938,7 +938,13 @@ public class Poller extends AbstractServiceDaemon {
             return false;
         }
 
-        PollableService svc = getNetwork().createService(service.getNodeId(), iface.getNode().getLabel(), iface.getNode().getLocation().getLocationName(), addr, serviceName);
+        final Integer ifServicePk = service.getId();
+        if (ifServicePk == null || ifServicePk <= 0) {
+            LOG.error("Cannot schedule service {}/{}/{}: monitored service has no positive database id (got {})",
+                    service.getNodeId(), ipAddr, serviceName, ifServicePk);
+            return false;
+        }
+        PollableService svc = getNetwork().createService(service.getNodeId(), iface.getNode().getLabel(), iface.getNode().getLocation().getLocationName(), addr, serviceName, ifServicePk);
         PollableServiceConfig pollConfig = new PollableServiceConfig(svc, m_pollerConfig, pkg,
                                                                      getScheduler(), m_persisterFactory, m_thresholdingService,
                                                                      m_locationAwarePollerClient, m_pollOutagesDao, serviceMonitorAdaptor);

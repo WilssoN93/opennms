@@ -29,6 +29,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
+import org.hibernate.Session;
 import org.opennms.core.criteria.Alias;
 import org.opennms.core.criteria.Criteria;
 import org.opennms.core.criteria.CriteriaBuilder;
@@ -158,27 +159,29 @@ public class MonitoredServiceDaoHibernate extends AbstractDaoHibernate<OnmsMonit
                     nodeId);
     }
 
-    @Override
-    public int updateLastGood(final int nodeId, final InetAddress ipAddress, final String svcName, final Date lastGood) {
-        return getSessionFactory().getCurrentSession().createQuery(
-                "update OnmsMonitoredService s set s.lastGood = :lastGood "
-                        + "where s.ipInterface.node.id = :nodeId and s.ipInterface.ipAddress = :ip and s.serviceType.name = :svcName")
-                .setParameter("lastGood", lastGood)
-                .setParameter("nodeId", nodeId)
-                .setParameter("ip", ipAddress)
-                .setParameter("svcName", svcName)
+    private static final String HQL_SET_LAST_GOOD = "s.lastGood = :ts";
+    private static final String HQL_SET_LAST_FAIL = "s.lastFail = :ts";
+
+    private int updateLastTimestampById(final int ifServiceId, final String setClause, final Date value) {
+        final Session session = getSessionFactory().getCurrentSession();
+        final int n = session.createQuery("update OnmsMonitoredService s set " + setClause + " where s.id = :id")
+                .setParameter("ts", value)
+                .setParameter("id", ifServiceId)
                 .executeUpdate();
+        final Object cached = session.get(OnmsMonitoredService.class, ifServiceId);
+        if (cached != null) {
+            session.evict(cached);
+        }
+        return n;
     }
 
     @Override
-    public int updateLastFail(final int nodeId, final InetAddress ipAddress, final String svcName, final Date lastFail) {
-        return getSessionFactory().getCurrentSession().createQuery(
-                "update OnmsMonitoredService s set s.lastFail = :lastFail "
-                        + "where s.ipInterface.node.id = :nodeId and s.ipInterface.ipAddress = :ip and s.serviceType.name = :svcName")
-                .setParameter("lastFail", lastFail)
-                .setParameter("nodeId", nodeId)
-                .setParameter("ip", ipAddress)
-                .setParameter("svcName", svcName)
-                .executeUpdate();
+    public int updateLastGoodById(final int ifServiceId, final Date lastGood) {
+        return updateLastTimestampById(ifServiceId, HQL_SET_LAST_GOOD, lastGood);
+    }
+
+    @Override
+    public int updateLastFailById(final int ifServiceId, final Date lastFail) {
+        return updateLastTimestampById(ifServiceId, HQL_SET_LAST_FAIL, lastFail);
     }
 }

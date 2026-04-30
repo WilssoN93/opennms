@@ -164,6 +164,7 @@ public class PollerRequestBuilderImpl implements PollerRequestBuilder {
         request.setNodeId(service.getNodeId());
         request.setNodeLabel(service.getNodeLabel());
         request.setNodeLocation(service.getNodeLocation());
+        request.setIfServiceId(service.getIfServiceId());
         //Overwrite if ttl exists in metadata
         ttlInMs = ParameterMap.getLongValue(MetadataConstants.TTL, interpolatedAttributes.get(MetadataConstants.TTL), ttlInMs);
         request.setTimeToLiveMs(ttlInMs);

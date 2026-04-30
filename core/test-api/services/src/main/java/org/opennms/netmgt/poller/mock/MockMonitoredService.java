@@ -80,4 +80,11 @@ public class MockMonitoredService implements MonitoredService {
     public InetAddress getAddress() {
         return m_inetAddr;
     }
+
+    private static final int STUB_IF_SERVICE_ID = 1;
+
+    @Override
+    public int getIfServiceId() {
+        return STUB_IF_SERVICE_ID;
+    }
 }

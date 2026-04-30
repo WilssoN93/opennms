@@ -74,7 +74,7 @@ public class PollerReconcileNodeTest {
     @Test
     public void unschedulesServiceWhenNoLongerPolled() throws Exception {
         final InetAddress addr = InetAddressUtils.addr(IP);
-        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC);
+        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC, 42);
         svc.setSchedule(mock(Schedule.class));
         assertFalse(svc.isDeleted());
 
@@ -86,7 +86,7 @@ public class PollerReconcileNodeTest {
     @Test
     public void unschedulesServiceWhenIsPolledTrueButNoLocalPackage() throws Exception {
         final InetAddress addr = InetAddressUtils.addr(IP);
-        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC);
+        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC, 42);
         svc.setSchedule(mock(Schedule.class));
         assertFalse(svc.isDeleted());
 
@@ -101,7 +101,7 @@ public class PollerReconcileNodeTest {
     @Test
     public void syncUnschedulesServiceWhenNoLocalPackageEvenIfPollableExists() throws Exception {
         final InetAddress addr = InetAddressUtils.addr(IP);
-        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC);
+        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC, 42);
         svc.setSchedule(mock(Schedule.class));
         assertFalse(svc.isDeleted());
 
@@ -116,7 +116,7 @@ public class PollerReconcileNodeTest {
     @Test
     public void syncKeepsServiceWhenPackageResolutionUnchanged() throws Exception {
         final InetAddress addr = InetAddressUtils.addr(IP);
-        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC);
+        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC, 42);
         svc.setSchedule(mock(Schedule.class));
         assertFalse(svc.isDeleted());
 
@@ -134,7 +134,7 @@ public class PollerReconcileNodeTest {
     @Test
     public void syncMarksNotPolledBeforeUnschedulingWhenNoPackage() throws Exception {
         final InetAddress addr = InetAddressUtils.addr(IP);
-        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC);
+        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC, 42);
         svc.setSchedule(mock(Schedule.class));
         m_pollerConfig.setFindPackageForServiceResult(null);
 
@@ -160,7 +160,7 @@ public class PollerReconcileNodeTest {
     @Test
     public void categorySyncReschedulesPollableWithoutEmbeddedPackageName() throws Exception {
         final InetAddress addr = InetAddressUtils.addr(IP);
-        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC);
+        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC, 42);
         svc.setSchedule(mock(Schedule.class));
         assertFalse(svc.isDeleted());
 
@@ -177,7 +177,7 @@ public class PollerReconcileNodeTest {
     @Test
     public void keepsServiceWhenStillPolled() throws Exception {
         final InetAddress addr = InetAddressUtils.addr(IP);
-        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC);
+        final PollableService svc = m_network.createService(NODE_ID, "node1", null, addr, SVC, 42);
         svc.setSchedule(mock(Schedule.class));
         assertFalse(svc.isDeleted());
 

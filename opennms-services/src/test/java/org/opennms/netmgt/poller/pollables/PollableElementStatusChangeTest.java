@@ -73,8 +73,9 @@ public class PollableElementStatusChangeTest {
         node.recalculateStatus();
         node.processStatusChange(new Date());
 
+        int ifServiceId = 1;
         for (final String svcName : new String[] { "ICMP", "HTTP", "SNMP" }) {
-            iface.createService(svcName);
+            iface.createService(svcName, ifServiceId++);
             node.recalculateStatus();
             node.processStatusChange(new Date());
         }

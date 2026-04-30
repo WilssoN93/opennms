@@ -126,4 +126,11 @@ public class SimpleMonitoredService implements MonitoredService {
         return location;
     }
 
+    private static final int STUB_IF_SERVICE_ID = 1;
+
+    @Override
+    public int getIfServiceId() {
+        return STUB_IF_SERVICE_ID;
+    }
+
 }

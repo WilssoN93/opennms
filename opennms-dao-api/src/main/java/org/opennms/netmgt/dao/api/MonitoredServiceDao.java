@@ -124,16 +124,16 @@ public interface MonitoredServiceDao extends LegacyOnmsDao<OnmsMonitoredService,
     List<OnmsMonitoredService> findAllServicesForScheduling();
 
     /**
-     * Sets {@code lastGood} by natural key without loading the entity.
+     * Sets {@code lastGood} by {@code ifservices.id} without loading the entity.
      *
-     * @return rows updated ({@code 0} if no matching service)
+     * @return rows updated ({@code 0} if no matching id)
      */
-    int updateLastGood(int nodeId, InetAddress ipAddress, String svcName, Date lastGood);
+    int updateLastGoodById(int ifServiceId, Date lastGood);
 
     /**
-     * Sets {@code lastFail} by natural key without loading the entity.
+     * Sets {@code lastFail} by {@code ifservices.id} without loading the entity.
      *
-     * @return rows updated ({@code 0} if no matching service)
+     * @return rows updated ({@code 0} if no matching id)
      */
-    int updateLastFail(int nodeId, InetAddress ipAddress, String svcName, Date lastFail);
+    int updateLastFailById(int ifServiceId, Date lastFail);
 }

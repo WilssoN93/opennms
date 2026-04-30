@@ -130,7 +130,7 @@ public class PollableServiceConfigIT {
         final PollableNetwork network = new PollableNetwork(context);
         final PollableNode node = network.createNodeIfNecessary(1, "foo", null);
         final PollableInterface iface = new PollableInterface(node, InetAddressUtils.addr("127.0.0.1"));
-        final PollableService svc = new PollableService(iface, "MQ_API_DirectRte_v2");
+        final PollableService svc = new PollableService(iface, "MQ_API_DirectRte_v2", 1);
         final Package pkg = factory.getPackage("MapQuest");
         final Timer timer = mock(Timer.class);
         final ThresholdingService thresholdingService = mock(ThresholdingService.class);
@@ -173,7 +173,7 @@ public class PollableServiceConfigIT {
         final LocationAwarePollerClient locationAwarePollerClient = mock(LocationAwarePollerClient.class);
         when(locationAwarePollerClient.poll()).thenReturn(pollerRequestBuilder);
 
-        final PollableService svc = new PollableService(iface, "HTTP-www.example.com");
+        final PollableService svc = new PollableService(iface, "HTTP-www.example.com", 1);
         final PollableServiceConfig psc = new PollableServiceConfig(svc, factory, pkg, timer,
                 persisterFactory, thresholdingService, locationAwarePollerClient, m_pollOutagesDao, m_serviceMonitorAdaptor);
         psc.poll();
@@ -260,7 +260,7 @@ public class PollableServiceConfigIT {
         final PollableNetwork network = new PollableNetwork(context);
         final PollableNode node = network.createNodeIfNecessary(1, "foo", null);
         final PollableInterface iface = new PollableInterface(node, InetAddressUtils.UNPINGABLE_ADDRESS);
-        final PollableService svc = new PollableService(iface, "ICMP");
+        final PollableService svc = new PollableService(iface, "ICMP", 1);
         final Package pkg = factory.getPackage("DowntimeNever");
         final Schedule sched = mock(Schedule.class);
         final ThresholdingService thresholdingService = mock(ThresholdingService.class);
@@ -317,7 +317,7 @@ public class PollableServiceConfigIT {
         final PollableNetwork network = new PollableNetwork(context);
         final PollableNode node = network.createNodeIfNecessary(1, "foo", null);
         final PollableInterface iface = new PollableInterface(node, InetAddressUtils.UNPINGABLE_ADDRESS);
-        final PollableService svc = new PollableService(iface, "ICMP");
+        final PollableService svc = new PollableService(iface, "ICMP", 1);
         final Package pkg = factory.getPackage("DowntimeNever");
         final Schedule sched = mock(Schedule.class);
         final ThresholdingService thresholdingService = mock(ThresholdingService.class);
@@ -381,7 +381,7 @@ public class PollableServiceConfigIT {
         final PollableNetwork network = new PollableNetwork(context);
         final PollableNode node = network.createNodeIfNecessary(1, "foo", null);
         final PollableInterface iface = new PollableInterface(node, InetAddressUtils.UNPINGABLE_ADDRESS);
-        final PollableService svc = new PollableService(iface, "ICMP");
+        final PollableService svc = new PollableService(iface, "ICMP", 1);
         final Package pkg = factory.getPackage("DowntimeNever");
         final Schedule sched = mock(Schedule.class);
         final ThresholdingService thresholdingService = mock(ThresholdingService.class);

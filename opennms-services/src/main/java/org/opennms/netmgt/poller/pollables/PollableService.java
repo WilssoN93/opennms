@@ -62,6 +62,8 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
 
 	private final String m_svcName;
 
+    private final int m_ifServiceId;
+
     private volatile PollConfig m_pollConfig;
     private volatile PollStatus m_oldStatus;
     private volatile Schedule m_schedule;
@@ -69,14 +71,15 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
     private volatile PollStatus m_preemptivePollStatus;
 
     /**
-     * <p>Constructor for PollableService.</p>
-     *
-     * @param svcName a {@link java.lang.String} object.
-     * @param iface a {@link org.opennms.netmgt.poller.pollables.PollableInterface} object.
+     * @param ifServiceId {@code ifservices.id} from the database (must be positive). Tests may use any positive synthetic id.
      */
-    public PollableService(PollableInterface iface, String svcName) {
+    public PollableService(PollableInterface iface, String svcName, int ifServiceId) {
         super(iface, Scope.SERVICE);
+        if (ifServiceId <= 0) {
+            throw new IllegalArgumentException("ifServiceId must be positive (ifservices.id), got: " + ifServiceId);
+        }
         m_svcName = svcName;
+        m_ifServiceId = ifServiceId;
     }
 
     @Override
@@ -150,7 +153,11 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
         return getInterface().getNodeId();
     }
 
-    
+    @Override
+    public int getIfServiceId() {
+        return m_ifServiceId;
+    }
+
     /**
      * <p>getNodeLabel</p>
      *

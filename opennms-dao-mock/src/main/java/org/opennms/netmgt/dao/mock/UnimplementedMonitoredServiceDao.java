@@ -170,12 +170,12 @@ public class UnimplementedMonitoredServiceDao implements MonitoredServiceDao {
     }
 
     @Override
-    public int updateLastGood(int nodeId, InetAddress ipAddress, String svcName, Date lastGood) {
+    public int updateLastGoodById(int ifServiceId, Date lastGood) {
         throw new UnsupportedOperationException("Not yet implemented!");
     }
 
     @Override
-    public int updateLastFail(int nodeId, InetAddress ipAddress, String svcName, Date lastFail) {
+    public int updateLastFailById(int ifServiceId, Date lastFail) {
         throw new UnsupportedOperationException("Not yet implemented!");
     }
 }

@@ -339,6 +339,7 @@ public class QueryManagerDaoImpl implements QueryManager {
         final int nodeId = pollableService.getNodeId();
         final InetAddress ipAddr = pollableService.getAddress();
         final String serviceName = pollableService.getSvcName();
+        final int ifServiceId = pollableService.getIfServiceId();
 
         final boolean updateGood = status.isAvailable();
         final boolean updateFail = status.isUnavailable() || status.isUnresponsive();
@@ -346,13 +347,12 @@ public class QueryManagerDaoImpl implements QueryManager {
             return;
         }
 
+        final Date pollTime = status.getTimestamp();
         try {
-            final Integer updated = m_transcationOps.execute((TransactionCallback<Integer>) transactionStatus -> {
-                if (updateGood) {
-                    return m_monitoredServiceDao.updateLastGood(nodeId, ipAddr, serviceName, status.getTimestamp());
-                }
-                return m_monitoredServiceDao.updateLastFail(nodeId, ipAddr, serviceName, status.getTimestamp());
-            });
+            final Integer updated = m_transcationOps.execute((TransactionCallback<Integer>) ts ->
+                    updateGood
+                            ? m_monitoredServiceDao.updateLastGoodById(ifServiceId, pollTime)
+                            : m_monitoredServiceDao.updateLastFailById(ifServiceId, pollTime));
             if (updated != null && updated > 0) {
                 LOG.debug("Successfully updated last good/fail timestamp for service named {} on node id {} and interface {}.",
                         serviceName, nodeId, ipAddr);

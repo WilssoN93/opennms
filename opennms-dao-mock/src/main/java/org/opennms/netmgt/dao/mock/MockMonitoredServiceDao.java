@@ -186,8 +186,8 @@ public class MockMonitoredServiceDao extends AbstractMockDao<OnmsMonitoredServic
     }
 
     @Override
-    public int updateLastGood(final int nodeId, final InetAddress ipAddress, final String svcName, final Date lastGood) {
-        final OnmsMonitoredService svc = get(nodeId, ipAddress, svcName);
+    public int updateLastGoodById(final int ifServiceId, final Date lastGood) {
+        final OnmsMonitoredService svc = get(ifServiceId);
         if (svc == null) {
             return 0;
         }
@@ -196,8 +196,8 @@ public class MockMonitoredServiceDao extends AbstractMockDao<OnmsMonitoredServic
     }
 
     @Override
-    public int updateLastFail(final int nodeId, final InetAddress ipAddress, final String svcName, final Date lastFail) {
-        final OnmsMonitoredService svc = get(nodeId, ipAddress, svcName);
+    public int updateLastFailById(final int ifServiceId, final Date lastFail) {
+        final OnmsMonitoredService svc = get(ifServiceId);
         if (svc == null) {
             return 0;
         }

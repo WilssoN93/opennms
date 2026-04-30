@@ -70,7 +70,7 @@ public class PassiveServiceMonitorIT extends PassiveStatusKeeperIT {
     }
 
     private PollableService createMonitoredService(int nodeId, String nodeLabel, String nodeLocation, String ipAddr, String serviceName) throws UnknownHostException {
-        return new PollableService(new PollableInterface(new PollableNode(new PollableNetwork(new MockPollContext()), nodeId, nodeLabel, nodeLocation), InetAddressUtils.addr(ipAddr)), serviceName);
+        return new PollableService(new PollableInterface(new PollableNode(new PollableNetwork(new MockPollContext()), nodeId, nodeLabel, nodeLocation), InetAddressUtils.addr(ipAddr)), serviceName, 1);
     }
 
     /**

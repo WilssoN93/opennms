@@ -74,4 +74,7 @@ public interface MonitoredService {
      */
     InetAddress getAddress();
 
+    /** {@code ifservices.id} (positive). */
+    int getIfServiceId();
+
 }

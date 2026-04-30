@@ -161,7 +161,7 @@ public class PollableNode extends PollableContainer {
      * @param addr a {@link java.net.InetAddress} object.
      * @return a {@link org.opennms.netmgt.poller.pollables.PollableService} object.
      */
-    public PollableService createService(final InetAddress addr, final String svcName) {
+    public PollableService createService(final InetAddress addr, final String svcName, final int ifServiceId) {
         final PollableService[] retVal = new PollableService[1];
         
         Runnable r = new Runnable() {
@@ -170,7 +170,7 @@ public class PollableNode extends PollableContainer {
                 PollableInterface iface = getInterface(addr);
                 if (iface == null)
                     iface = createInterface(addr);
-                retVal[0] = iface.createService(svcName);
+                retVal[0] = iface.createService(svcName, ifServiceId);
             }
         };
         withTreeLock(r);

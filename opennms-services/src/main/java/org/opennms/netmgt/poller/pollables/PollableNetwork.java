@@ -151,10 +151,11 @@ public class PollableNetwork extends PollableContainer {
      * @param nodeLocation a {@link java.lang.String} object.
      * @param addr a {@link java.net.InetAddress} object.
      * @param svcName a {@link java.lang.String} object.
+     * @param ifServiceId {@code ifservices.id} (must be positive)
      * @return a {@link org.opennms.netmgt.poller.pollables.PollableService} object.
      */
-    public PollableService createService(int nodeId, String nodeLabel, String nodeLocation, InetAddress addr, String svcName) {
-        return createNodeIfNecessary(nodeId, nodeLabel, nodeLocation).createService(addr, svcName);
+    public PollableService createService(int nodeId, String nodeLabel, String nodeLocation, InetAddress addr, String svcName, int ifServiceId) {
+        return createNodeIfNecessary(nodeId, nodeLabel, nodeLocation).createService(addr, svcName, ifServiceId);
     }
 
     /**

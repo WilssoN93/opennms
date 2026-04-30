@@ -377,7 +377,7 @@ public class PollablesIT {
         InetAddress addr = InetAddressUtils.addr("192.168.1.99");
         String svcName = "HTTP-99";
 
-        PollableService svc = m_network.createService(nodeId, "WebServer99", null, addr, svcName);
+        PollableService svc = m_network.createService(nodeId, "WebServer99", null, addr, svcName, 1);
         assertNotNull("svc is null", svc);
         assertEquals(svcName, svc.getSvcName());
         assertEquals(addr, svc.getAddress());
@@ -2752,7 +2752,7 @@ public class PollablesIT {
             return null;
         }
 
-        PollableService svc = pNetwork.createService(nodeId, nodeLabel, nodeLocation, addr, serviceName);
+        PollableService svc = pNetwork.createService(nodeId, nodeLabel, nodeLocation, addr, serviceName, 1);
         PollableServiceConfig pollConfig = new PollableServiceConfig(svc, pollerConfig, pkg,
                 scheduler, m_persisterFactory, m_thresholdingService, m_locationAwarePollerClient, pollOutagesDao, m_serviceMonitorAdaptor);
 

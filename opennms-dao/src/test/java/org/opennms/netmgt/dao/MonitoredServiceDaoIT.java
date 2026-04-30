@@ -27,6 +27,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.opennms.core.utils.InetAddressUtils.addr;
 
+import java.util.Date;
 import java.util.List;
 
 import org.junit.Before;
@@ -178,6 +179,26 @@ public class MonitoredServiceDaoIT implements InitializingBean {
         final OnmsMonitoredService monSvc2 = m_monitoredServiceDao.get(m_databasePopulator.getNode1().getId(), addr("192.168.1.1"), monSvc.getIfIndex(), monSvc.getServiceId());
         assertNotNull(monSvc2);
 
+    }
+
+    @Test
+    @Transactional
+    public void testUpdateLastGoodAndLastFailNativeSql() {
+        final int nodeId = m_databasePopulator.getNode1().getId();
+        final Date good = new Date(1_700_000_000_000L);
+        final Date fail = new Date(1_700_000_100_000L);
+
+        OnmsMonitoredService icmpRow = m_monitoredServiceDao.get(nodeId, addr("192.168.1.1"), "ICMP");
+        assertNotNull(icmpRow);
+        assertEquals(1, m_monitoredServiceDao.updateLastGoodById(icmpRow.getId(), good));
+        m_monitoredServiceDao.flush();
+        OnmsMonitoredService icmp = m_monitoredServiceDao.get(nodeId, addr("192.168.1.1"), "ICMP");
+        assertEquals(good, icmp.getLastGood());
+
+        assertEquals(1, m_monitoredServiceDao.updateLastFailById(icmp.getId(), fail));
+        m_monitoredServiceDao.flush();
+        icmp = m_monitoredServiceDao.get(nodeId, addr("192.168.1.1"), "ICMP");
+        assertEquals(fail, icmp.getLastFail());
     }
 
 }

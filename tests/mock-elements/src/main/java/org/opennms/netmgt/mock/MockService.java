@@ -214,6 +214,11 @@ public class MockService extends MockElement implements MonitoredService {
         return getNode().getNodeId();
     }
 
+    @Override
+    public int getIfServiceId() {
+        return m_id;
+    }
+
     // model
     /**
      * <p>getNodeLabel</p>
