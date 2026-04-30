@@ -22,6 +22,7 @@
 package org.opennms.netmgt.dao.hibernate;
 
 import java.net.InetAddress;
+import java.util.Date;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -155,5 +156,29 @@ public class MonitoredServiceDaoHibernate extends AbstractDaoHibernate<OnmsMonit
                     "left join fetch iface.node as node " +
                     "where node.id = ?",
                     nodeId);
+    }
+
+    @Override
+    public int updateLastGood(final int nodeId, final InetAddress ipAddress, final String svcName, final Date lastGood) {
+        return getSessionFactory().getCurrentSession().createQuery(
+                "update OnmsMonitoredService s set s.lastGood = :lastGood "
+                        + "where s.ipInterface.node.id = :nodeId and s.ipInterface.ipAddress = :ip and s.serviceType.name = :svcName")
+                .setParameter("lastGood", lastGood)
+                .setParameter("nodeId", nodeId)
+                .setParameter("ip", ipAddress)
+                .setParameter("svcName", svcName)
+                .executeUpdate();
+    }
+
+    @Override
+    public int updateLastFail(final int nodeId, final InetAddress ipAddress, final String svcName, final Date lastFail) {
+        return getSessionFactory().getCurrentSession().createQuery(
+                "update OnmsMonitoredService s set s.lastFail = :lastFail "
+                        + "where s.ipInterface.node.id = :nodeId and s.ipInterface.ipAddress = :ip and s.serviceType.name = :svcName")
+                .setParameter("lastFail", lastFail)
+                .setParameter("nodeId", nodeId)
+                .setParameter("ip", ipAddress)
+                .setParameter("svcName", svcName)
+                .executeUpdate();
     }
 }

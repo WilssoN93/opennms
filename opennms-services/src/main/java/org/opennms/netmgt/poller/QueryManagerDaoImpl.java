@@ -336,24 +336,24 @@ public class QueryManagerDaoImpl implements QueryManager {
 
     @Override
     public void updateLastGoodOrFail(PollableService pollableService, PollStatus status) {
-        final var nodeId = pollableService.getNodeId();
-        final var ipAddr = pollableService.getAddress();
-        final var serviceName = pollableService.getSvcName();
+        final int nodeId = pollableService.getNodeId();
+        final InetAddress ipAddr = pollableService.getAddress();
+        final String serviceName = pollableService.getSvcName();
+
+        final boolean updateGood = status.isAvailable();
+        final boolean updateFail = status.isUnavailable() || status.isUnresponsive();
+        if (!updateGood && !updateFail) {
+            return;
+        }
+
         try {
-            var svc = m_transcationOps.execute((TransactionCallback<Object>) transactionStatus -> {
-                final OnmsMonitoredService service = m_monitoredServiceDao.get(nodeId, ipAddr, serviceName);
-                if (service == null) {
-                    return null;
+            final Integer updated = m_transcationOps.execute((TransactionCallback<Integer>) transactionStatus -> {
+                if (updateGood) {
+                    return m_monitoredServiceDao.updateLastGood(nodeId, ipAddr, serviceName, status.getTimestamp());
                 }
-                if (status.isAvailable()) {
-                    service.setLastGood(status.getTimestamp());
-                } else if (status.isUnavailable() || status.isUnresponsive()) {
-                    service.setLastFail(status.getTimestamp());
-                }  // else ignore, not explicitly good or bad
-                m_monitoredServiceDao.saveOrUpdate(service);
-                return service;
+                return m_monitoredServiceDao.updateLastFail(nodeId, ipAddr, serviceName, status.getTimestamp());
             });
-            if (svc != null) {
+            if (updated != null && updated > 0) {
                 LOG.debug("Successfully updated last good/fail timestamp for service named {} on node id {} and interface {}.",
                         serviceName, nodeId, ipAddr);
             } else {

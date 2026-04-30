@@ -22,6 +22,7 @@
 package org.opennms.netmgt.dao.api;
 
 import java.net.InetAddress;
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 
@@ -121,4 +122,18 @@ public interface MonitoredServiceDao extends LegacyOnmsDao<OnmsMonitoredService,
      * @return a {@link java.util.List} object.
      */
     List<OnmsMonitoredService> findAllServicesForScheduling();
+
+    /**
+     * Sets {@code lastGood} by natural key without loading the entity.
+     *
+     * @return rows updated ({@code 0} if no matching service)
+     */
+    int updateLastGood(int nodeId, InetAddress ipAddress, String svcName, Date lastGood);
+
+    /**
+     * Sets {@code lastFail} by natural key without loading the entity.
+     *
+     * @return rows updated ({@code 0} if no matching service)
+     */
+    int updateLastFail(int nodeId, InetAddress ipAddress, String svcName, Date lastFail);
 }

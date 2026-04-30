@@ -22,6 +22,7 @@
 package org.opennms.netmgt.dao.mock;
 
 import java.net.InetAddress;
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 
@@ -165,6 +166,16 @@ public class UnimplementedMonitoredServiceDao implements MonitoredServiceDao {
 
     @Override
     public List<OnmsMonitoredService> findAllServicesForScheduling() {
+        throw new UnsupportedOperationException("Not yet implemented!");
+    }
+
+    @Override
+    public int updateLastGood(int nodeId, InetAddress ipAddress, String svcName, Date lastGood) {
+        throw new UnsupportedOperationException("Not yet implemented!");
+    }
+
+    @Override
+    public int updateLastFail(int nodeId, InetAddress ipAddress, String svcName, Date lastFail) {
         throw new UnsupportedOperationException("Not yet implemented!");
     }
 }
