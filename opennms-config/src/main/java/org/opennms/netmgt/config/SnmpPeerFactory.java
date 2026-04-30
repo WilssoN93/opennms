@@ -99,7 +99,7 @@ public class SnmpPeerFactory implements SnmpAgentConfigFactory {
     /**
      * The singleton instance of this factory
      */
-    private static volatile SnmpPeerFactory s_singleton = null;
+    private static SnmpPeerFactory s_singleton = null;
 
     /**
      * This member is set to true if the configuration file has been loaded.
@@ -131,16 +131,11 @@ public class SnmpPeerFactory implements SnmpAgentConfigFactory {
      */
     private static final Object secureCredentialsScopeInitLock = new Object();
 
-    /**
-     * Serializes post-load {@link #encryptSnmpConfig()} so {@link BeanUtils#getBean} for the
-     * text encryptor never runs under {@code SnmpPeerFactory.class} (same deadlock class as
-     * {@link #getSecureCredentialsScope()} vs {@code ContextRegistry}).
-     */
-    private static final Object postLoadEncryptLock = new Object();
+    public SnmpPeerFactory() {
+        LOG.debug("creating new instance: {}", this);
+    }
 
-    private static final Object textEncryptorInitLock = new Object();
-
-    /**
+    /** 
      * <p>Constructor for SnmpPeerFactory.</p>
      *
      * @param resource a {@link org.springframework.core.io.Resource} object.
@@ -177,35 +172,17 @@ public class SnmpPeerFactory implements SnmpAgentConfigFactory {
         return m_lock.writeLock();
     }
 
-    public static void init() throws IOException {
-        SnmpPeerFactory newlyCreated = null;
-        synchronized (SnmpPeerFactory.class) {
-            if (!s_loaded.get()) {
-                final File cfgFile = getFile();
-                LOG.debug("init: config file path: {}", cfgFile.getPath());
-                final FileSystemResource resource = new FileSystemResource(cfgFile);
-                s_singleton = new SnmpPeerFactory(resource);
-                newlyCreated = s_singleton;
-            }
-        }
+    public static synchronized void init() throws IOException {
+        if (!s_loaded.get()) {
+            final File cfgFile = getFile();
+            LOG.debug("init: config file path: {}", cfgFile.getPath());
+            final FileSystemResource resource = new FileSystemResource(cfgFile);
 
-        final SnmpPeerFactory singleton = s_singleton;
-        if (singleton == null) {
-            return;
+            s_singleton = new SnmpPeerFactory(resource);
+            s_loaded.set(true);
         }
-
-        if (singleton.encryptionEnabled) {
-            synchronized (postLoadEncryptLock) {
-                singleton.encryptSnmpConfig();
-            }
-        }
-
-        if (newlyCreated != null) {
-            synchronized (SnmpPeerFactory.class) {
-                if (!s_loaded.get()) {
-                    s_loaded.set(true);
-                }
-            }
+        if (s_singleton.encryptionEnabled) {
+            s_singleton.encryptSnmpConfig();
         }
     }
 
@@ -229,7 +206,7 @@ public class SnmpPeerFactory implements SnmpAgentConfigFactory {
      *
      * @throws java.io.IOException Thrown if the specified config file cannot be read
      */
-    public static SnmpPeerFactory getInstance() {
+    public static synchronized SnmpPeerFactory getInstance() {
         if (!s_loaded.get()) {
             try {
                 init();
@@ -813,13 +790,7 @@ public class SnmpPeerFactory implements SnmpAgentConfigFactory {
     }
 
     private void initializeTextEncryptor() {
-        if (textEncryptor != null) {
-            return;
-        }
-        synchronized (textEncryptorInitLock) {
-            if (textEncryptor != null) {
-                return;
-            }
+        if (textEncryptor == null) {
             try {
                 textEncryptor = BeanUtils.getBean("daoContext", "textEncryptor", TextEncryptor.class);
             } catch (Exception e) {
