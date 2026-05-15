@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-2.0.xsd">
+
+    <!-- Partial NodeScan lifecycle event — not applied by bulk eventconf_events.sql seed on upgrades (that runs only when eventconf_events is empty). -->
+    <changeSet author="opennms" id="35.0.4-add-event-node-scan-partially-completed">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="eventconf_events"/>
+                <tableExists tableName="eventconf_sources"/>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM eventconf_sources WHERE name = 'opennms.provisioning.events'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM eventconf_events
+                    WHERE uei = 'uei.opennms.org/internal/provisiond/nodeScanPartiallyCompleted'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <comment>Add definition for Provisiond partial node scan lifecycle event.</comment>
+        <sql>
+            <![CDATA[
+INSERT INTO eventconf_events(id, source_id, uei, event_label, description, enabled, xml_content,
+    created_time, last_modified, modified_by)
+SELECT m.mx + 1, ps.id, 'uei.opennms.org/internal/provisiond/nodeScanPartiallyCompleted',
+    'OpenNMS-defined Provisiond Event: nodeScanPartiallyCompleted',
+    'A message from the Provisiond NodeScan lifecycle that a NodeScan completed with one or more discovery failures:
+            <p>The Node with Id: %nodeid%; ForeignSource: %parm[foreignSource]%; ForeignId:%parm[foreignId]% completed with %parm[provisionFailedTaskCount]% failed task(s). Requisition data was applied; SNMP discovery may be incomplete.</p>',
+    TRUE,
+    '<event xmlns="http://xmlns.opennms.org/xsd/eventconf">
+   <uei>uei.opennms.org/internal/provisiond/nodeScanPartiallyCompleted</uei>
+   <event-label>OpenNMS-defined Provisiond Event: nodeScanPartiallyCompleted</event-label>
+   <descr>A message from the Provisiond NodeScan lifecycle that a NodeScan completed with one or more discovery failures:
+            &lt;p&gt;The Node with Id: %nodeid%; ForeignSource: %parm[foreignSource]%; ForeignId:%parm[foreignId]% completed with %parm[provisionFailedTaskCount]% failed task(s). Requisition data was applied; SNMP discovery may be incomplete.&lt;/p&gt;</descr>
+   <logmsg dest="logndisplay">
+            &lt;p&gt;The Node with Id: %nodeid%; ForeignSource: %parm[foreignSource]%; ForeignId:%parm[foreignId]% completed with %parm[provisionFailedTaskCount]% failed discovery step(s).&lt;/p>
+        </logmsg>
+   <severity>Warning</severity>
+</event>',
+    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system-migration'
+FROM (SELECT COALESCE(MAX(id), 0) AS mx FROM eventconf_events) AS m,
+     eventconf_sources ps
+WHERE ps.name = 'opennms.provisioning.events'
+LIMIT 1;
+            ]]>
+        </sql>
+        <sql>
+            UPDATE eventconf_events
+            SET severity = (
+            xpath('//ns:severity/text()', xml_content::xml, ARRAY[
+            ['ns', 'http://xmlns.opennms.org/xsd/eventconf']
+            ])::text[]
+            )[1]
+            WHERE uei = 'uei.opennms.org/internal/provisiond/nodeScanPartiallyCompleted';
+        </sql>
+        <sql>
+            SELECT setval('eventconf_events_id_seq', (SELECT COALESCE(MAX(id), 1) FROM eventconf_events));
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

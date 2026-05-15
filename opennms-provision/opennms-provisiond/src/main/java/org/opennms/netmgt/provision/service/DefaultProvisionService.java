@@ -1097,6 +1097,24 @@ public class DefaultProvisionService implements ProvisionService, InitializingBe
 
     }
 
+    /** {@inheritDoc} */
+    @Transactional
+    @Override
+    public void reconcileRequisitionMetadataToDb(final Integer nodeId, final String foreignSource, final String foreignId) {
+        if (nodeId == null || nodeId <= 0 || foreignSource == null || foreignId == null) {
+            LOG.debug("reconcileRequisitionMetadataToDb: skip (nodeId={}, foreignSource={}, foreignId={})", nodeId,
+                    foreignSource, foreignId);
+            return;
+        }
+        final OnmsNode template = getRequisitionedNode(foreignSource, foreignId);
+        if (template == null) {
+            LOG.info("reconcileRequisitionMetadataToDb: no active requisition for {}/{}", foreignSource, foreignId);
+            return;
+        }
+        template.setId(nodeId);
+        updateNodeAttributes(template);
+    }
+
     public Set<String> getCategoriesForNode(final OnmsNode node) {
         final TreeSet<String> categories = new TreeSet<>();
         for (final OnmsCategory cat : node.getCategories()) {

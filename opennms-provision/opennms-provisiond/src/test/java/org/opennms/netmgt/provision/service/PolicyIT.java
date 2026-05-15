@@ -129,7 +129,7 @@ public class PolicyIT {
     public void testSnmpPollPolicy() throws Exception {
         try {
             // Create a BackgroundTask to wait for the provisioning group import to complete
-            final BackgroundTask eventRecieved = anticipateEvents(EventConstants.PROVISION_SCAN_COMPLETE_UEI, EventConstants.PROVISION_SCAN_ABORTED_UEI );
+            final BackgroundTask eventRecieved = anticipateEvents(EventConstants.PROVISION_SCAN_COMPLETE_UEI, EventConstants.PROVISION_SCAN_PARTIALLY_COMPLETED_UEI, EventConstants.PROVISION_SCAN_ABORTED_UEI );
 
             // Import the provisioning group
             m_provisioner.importModelFromResource(m_resourceLoader.getResource("classpath:/NMS-5414.xml"), Boolean.TRUE.toString());

@@ -117,7 +117,7 @@ public class Nms5414IT extends ProvisioningITCase {
     public void testScanIPV6z() throws Exception {
         final int nextNodeId = m_nodeDao.getNextNodeId();
 
-        final CountDownLatch eventRecieved = anticipateEvents(1, EventConstants.PROVISION_SCAN_COMPLETE_UEI, EventConstants.PROVISION_SCAN_ABORTED_UEI);
+        final CountDownLatch eventRecieved = anticipateEvents(1, EventConstants.PROVISION_SCAN_COMPLETE_UEI, EventConstants.PROVISION_SCAN_PARTIALLY_COMPLETED_UEI, EventConstants.PROVISION_SCAN_ABORTED_UEI);
 
         m_provisioner.importModelFromResource(m_resourceLoader.getResource("classpath:/NMS-5414.xml"), Boolean.TRUE.toString());
         waitForEverything();

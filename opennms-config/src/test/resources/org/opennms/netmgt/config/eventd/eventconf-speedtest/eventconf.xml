@@ -1413,6 +1413,18 @@
      <severity>Normal</severity>
   </event>
   <event>
+    <uei>uei.opennms.org/internal/provisiond/nodeScanPartiallyCompleted</uei>
+    <event-label>OpenNMS-defined Provisiond Event: nodeScanPartiallyCompleted</event-label>
+    <descr>
+      A message from the Provisiond NodeScan lifecycle that a NodeScan completed with one or more discovery failures:
+      &lt;p&gt;The Node with Id: %nodeid%; ForeignSource: %parm[foreignSource]%; ForeignId:%parm[foreignId]% completed with %parm[provisionFailedTaskCount]% failed task(s).&lt;/p&gt;
+    </descr>
+    <logmsg dest='logndisplay' >
+      &lt;p&gt;The Node with Id: %nodeid%; ForeignSource: %parm[foreignSource]%; ForeignId:%parm[foreignId]% completed with %parm[provisionFailedTaskCount]% failed discovery step(s).&lt;/p&gt;
+     </logmsg>
+     <severity>Warning</severity>
+  </event>
+  <event>
     <uei>uei.opennms.org/internal/provisiond/nodeScanAborted</uei>
     <event-label>OpenNMS-defined Provisiond Event: nodeScanAborted</event-label>
     <descr>

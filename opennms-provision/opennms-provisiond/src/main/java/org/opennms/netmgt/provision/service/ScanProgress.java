@@ -41,4 +41,29 @@ public interface ScanProgress {
      * @return a boolean.
      */
     public boolean isAborted();
+
+    /**
+     * Record a non-fatal failure during a node scan (e.g. SNMP timeout). The scan may continue.
+     * Default implementation is a no-op for callers that do not track partial failures.
+     *
+     * @param provisionTask short name of the step that failed
+     * @param message failure detail
+     */
+    default void failTask(String provisionTask, String message) {
+        // no-op
+    }
+
+    /**
+     * @return number of non-fatal task failures recorded for this scan
+     */
+    default int getFailedTasksCount() {
+        return 0;
+    }
+
+    /**
+     * @return true if {@link #failTask} was called at least once
+     */
+    default boolean hasFailedTasks() {
+        return false;
+    }
 }

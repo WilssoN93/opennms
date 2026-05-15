@@ -75,8 +75,9 @@ public class EventConfPersistenceService {
 
     @PostConstruct
     public void init() {
-        // Asynchronously load events from DB in order to not to block startup
-        EventConfServiceHelper.reloadEventsFromDBAsync(eventConfEventDao, eventConfDao, eventConfExecutor);
+        // Load synchronously so Eventd expands early internal events (e.g. Provisiond scan lifecycle)
+        // against populated EventConfDao; async deferral could otherwise match ueis to default/event.
+        EventConfServiceHelper.reloadEventsFromDB(eventConfEventDao, eventConfDao);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

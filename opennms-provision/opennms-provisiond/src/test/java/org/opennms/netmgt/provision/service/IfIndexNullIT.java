@@ -102,7 +102,7 @@ public class IfIndexNullIT extends ProvisioningITCase implements InitializingBea
         @JUnitSnmpAgent(host="192.0.2.204", port=161, resource="classpath:/snmpTestData-null.properties")
     })
     public void testNullIfIndex() throws Exception {
-        final CountDownLatch eventRecieved = anticipateEvents(1, EventConstants.PROVISION_SCAN_COMPLETE_UEI, EventConstants.PROVISION_SCAN_ABORTED_UEI);
+        final CountDownLatch eventRecieved = anticipateEvents(1, EventConstants.PROVISION_SCAN_COMPLETE_UEI, EventConstants.PROVISION_SCAN_PARTIALLY_COMPLETED_UEI, EventConstants.PROVISION_SCAN_ABORTED_UEI);
 
         m_provisioner.importModelFromResource(m_resourceLoader.getResource("classpath:/tec_dump.xml"), Boolean.TRUE.toString());
         waitForEverything();

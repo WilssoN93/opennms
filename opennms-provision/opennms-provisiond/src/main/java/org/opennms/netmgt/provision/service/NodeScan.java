@@ -87,6 +87,7 @@ public class NodeScan implements Scan {
 
     // NOTE TO SELF: This is referenced from the AgentScan inner class
     private boolean m_aborted = false;
+    private int m_failedTasks = 0;
 
     private OnmsNode m_node;
     private boolean m_agentFound = false;
@@ -259,6 +260,23 @@ public class NodeScan implements Scan {
      */
     public boolean isAborted() {
         return m_aborted;
+    }
+
+    /**
+     * Record a non-fatal failure (e.g. SNMP timeout). Discovery may be incomplete; the scan continues
+     * so requisition-driven updates can still be applied.
+     */
+    public void failTask(final String provisionTask, final String reason) {
+        m_failedTasks++;
+        LOG.warn("Node scan partial failure for node {} (task {}): {}", m_nodeId, provisionTask, reason);
+    }
+
+    public int getFailedTasksCount() {
+        return m_failedTasks;
+    }
+
+    public boolean hasFailedTasks() {
+        return m_failedTasks > 0;
     }
 
     /**
@@ -447,6 +465,7 @@ public class NodeScan implements Scan {
 
     private void reset() {
         m_aborted = false;
+        m_failedTasks = 0;
         m_agentFound = false;
     }
 
@@ -467,6 +486,21 @@ public class NodeScan implements Scan {
             super(nodeId, node);
             m_agentAddress = agentAddress;
             m_agentType = agentType;
+        }
+
+        @Override
+        public void failTask(final String provisionTask, final String reason) {
+            NodeScan.this.failTask(provisionTask, reason);
+        }
+
+        @Override
+        public int getFailedTasksCount() {
+            return NodeScan.this.getFailedTasksCount();
+        }
+
+        @Override
+        public boolean hasFailedTasks() {
+            return NodeScan.this.hasFailedTasks();
         }
 
         public InetAddress getAgentAddress() {
@@ -494,7 +528,7 @@ public class NodeScan implements Scan {
         }
 
         void completed() {
-            if (!isAborted()) {
+            if (!isAborted() && !hasFailedTasks()) {
                 final EventBuilder bldr = new EventBuilder(EventConstants.REINITIALIZE_PRIMARY_SNMP_INTERFACE_EVENT_UEI,
                         "Provisiond");
                 bldr.setNodeid(getNodeId());
@@ -504,7 +538,9 @@ public class NodeScan implements Scan {
         }
 
         void deleteObsoleteResources() {
-            if (!isAborted()) {
+            if (hasFailedTasks()) {
+                LOG.debug("Skipping deleteObsoleteResources for {} because the scan had partial SNMP failures", this);
+            } else if (!isAborted()) {
                 getProvisionService().updateNodeScanStamp(getNodeId(), getScanStamp());
                 getProvisionService().deleteObsoleteInterfaces(getNodeId(), getScanStamp());
                 LOG.debug("Finished deleteObsoleteResources for {}", this);
@@ -665,8 +701,8 @@ public class NodeScan implements Scan {
             LOG.info("detecting IP interfaces for node {}/{}/{} using table tracker {}", node.getId(),
                     node.getForeignSource(), node.getForeignId(), tracker);
 
-            if (isAborted()) {
-                LOG.debug("'{}' is marked as aborted; skipping scan of table {}", currentPhase, tracker);
+            if (isAborted() || hasFailedTasks()) {
+                LOG.debug("'{}' is marked as aborted or has failed tasks; skipping scan of table {}", currentPhase, tracker);
             } else {
                 Assert.notNull(getAgentConfigFactory(), "agentConfigFactory was not injected");
 
@@ -695,7 +731,8 @@ public class NodeScan implements Scan {
 
                     LOG.debug("Finished phase {}", currentPhase);
                 } catch (ExecutionException e) {
-                    abort("Aborting node scan : Agent failed while scanning the IP address tables : " + e.getMessage());
+                    failTask("walkTable(" + tracker.getClass().getSimpleName() + ")",
+                            "Agent failed while scanning the IP address tables: " + e.getMessage());
                 } catch (final InterruptedException e) {
                     abort("Aborting node scan : Scan thread failed while waiting for the IP address tables");
                 }
@@ -703,7 +740,7 @@ public class NodeScan implements Scan {
         }
 
         public void detectPhysicalInterfaces(final BatchTask currentPhase) {
-            if (isAborted()) {
+            if (isAborted() || hasFailedTasks()) {
                 return;
             }
             String locationName = getLocation() == null ? null : getLocation().getLocationName();
@@ -751,7 +788,8 @@ public class NodeScan implements Scan {
                         .get();
                 LOG.debug("Finished phase {}", currentPhase);
             } catch (ExecutionException e) {
-                abort("Aborting node scan : Agent failed while scanning the interfaces table: " + e.getMessage());
+                failTask("detectPhysicalInterfaces",
+                        "Agent failed while scanning the interfaces table: " + e.getMessage());
             } catch (final InterruptedException e) {
                 abort("Aborting node scan : Scan thread interrupted while waiting for interfaces table");
                 Thread.currentThread().interrupt();
@@ -850,7 +888,7 @@ public class NodeScan implements Scan {
         }
 
         void stampProvisionedInterfaces(final BatchTask phase) {
-            if (!isAborted()) {
+            if (!isAborted() && !hasFailedTasks()) {
 
                 for (final OnmsIpInterface iface : getNode().getIpInterfaces()) {
                     iface.setIpLastCapsdPoll(getScanStamp());
@@ -862,7 +900,9 @@ public class NodeScan implements Scan {
         }
 
         void deleteObsoleteResources(final BatchTask phase) {
-            if (!isAborted()) {
+            if (hasFailedTasks()) {
+                LOG.debug("Skipping deleteObsoleteResources in NoAgentScan because the scan had partial failures");
+            } else if (!isAborted()) {
                 getProvisionService().updateNodeScanStamp(getNodeId(), getScanStamp());
                 getProvisionService().deleteObsoleteInterfaces(getNodeId(), getScanStamp());
             }
@@ -871,6 +911,11 @@ public class NodeScan implements Scan {
         private void doPersistNodeInfo(final BatchTask phase) {
             if (!isAborted()) {
                 getProvisionService().updateNodeAttributes(getNode());
+            } else {
+                final OnmsNode node = getNode();
+                if (node != null && getNodeId() != null && getForeignSource() != null && node.getForeignId() != null) {
+                    getProvisionService().reconcileRequisitionMetadataToDb(getNodeId(), getForeignSource(), node.getForeignId());
+                }
             }
             LOG.debug("Finished phase {}", phase);
         }
@@ -950,6 +995,10 @@ public class NodeScan implements Scan {
 
         public boolean isAborted() {
             return NodeScan.this.isAborted();
+        }
+
+        public boolean hasFailedTasks() {
+            return NodeScan.this.hasFailedTasks();
         }
 
         public void abort(final String reason) {
@@ -1119,7 +1168,13 @@ public class NodeScan implements Scan {
      */
     public void scanCompleted(final BatchTask currentPhase) {
         if (!isAborted()) {
-            final EventBuilder bldr = new EventBuilder(EventConstants.PROVISION_SCAN_COMPLETE_UEI, "Provisiond");
+            final EventBuilder bldr;
+            if (hasFailedTasks()) {
+                bldr = new EventBuilder(EventConstants.PROVISION_SCAN_PARTIALLY_COMPLETED_UEI, "Provisiond");
+                bldr.addParam(EventConstants.PARM_PROVISION_FAILED_TASK_COUNT, getFailedTasksCount());
+            } else {
+                bldr = new EventBuilder(EventConstants.PROVISION_SCAN_COMPLETE_UEI, "Provisiond");
+            }
             bldr.setNodeid(getNodeId());
             bldr.addParam(EventConstants.PARM_FOREIGN_SOURCE, getForeignSource());
             bldr.addParam(EventConstants.PARM_FOREIGN_ID, getForeignId());

@@ -117,6 +117,13 @@ public interface ProvisionService {
     
     @Transactional
     OnmsNode updateNodeAttributes(OnmsNode node);
+
+    /**
+     * Apply requisition-driven node metadata (categories, assets, attributes from XML) to the DB
+     * using a fresh requisition view, without requiring a successful SNMP discovery pass.
+     */
+    @Transactional
+    void reconcileRequisitionMetadataToDb(Integer nodeId, String foreignSource, String foreignId);
    
     @Transactional
     OnmsNode getDbNodeInitCat(Integer nodeId);

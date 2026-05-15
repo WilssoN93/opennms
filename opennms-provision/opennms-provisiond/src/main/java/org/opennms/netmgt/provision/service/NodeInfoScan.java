@@ -61,7 +61,6 @@ final class NodeInfoScan implements RunInBatch {
     private OnmsNode m_node;
     private Integer m_nodeId;
     private final OnmsMonitoringLocation m_location;
-    private boolean restoreCategories = false;
     private final ProvisionService m_provisionService;
     private final ScanProgress m_scanProgress;
     private Span m_parentSpan;
@@ -143,6 +142,10 @@ final class NodeInfoScan implements RunInBatch {
         m_scanProgress.abort(reason);
     }
 
+    private void failTask(String provisionTask, String reason) {
+        m_scanProgress.failTask(provisionTask, reason);
+    }
+
     private OnmsNode getNode() {
         return m_node;
     }
@@ -176,18 +179,20 @@ final class NodeInfoScan implements RunInBatch {
                     succeeded = peformScanWithMatchingProfile(agentConfig, primaryAddress);
                 }
                 if(!succeeded) {
-                    abort("Aborting node scan : Agent failed while scanning the system table: " + e.getMessage());
+                    failTask("collectNodeInfo",
+                            "Agent failed while scanning the system table: " + e.getMessage());
                 }
             }
 
             List<NodePolicy> nodePolicies = getProvisionService().getNodePoliciesForForeignSource(getEffectiveForeignSource());
 
-            OnmsNode node = null;
+            OnmsNode node;
             if (isAborted()) {
-                if (getNodeId() != null && nodePolicies.size() > 0) {
-                    restoreCategories = true;
+                if (getNodeId() != null && !nodePolicies.isEmpty()) {
                     node = m_provisionService.getDbNodeInitCat(getNodeId());
-                    LOG.debug("collectNodeInfo: checking {} node policies for restoration of categories", nodePolicies.size());
+                    LOG.debug("collectNodeInfo: applying {} node policies to DB-backed node after abort", nodePolicies.size());
+                } else {
+                    node = null;
                 }
             } else {
                 node = getNode();
@@ -200,7 +205,6 @@ final class NodeInfoScan implements RunInBatch {
             }
         
             if (node == null) {
-                restoreCategories = false;
                 if (!isAborted()) {
                     String reason = "Aborted scan of node due to configured policy";
                     abort(reason);
@@ -295,11 +299,13 @@ final class NodeInfoScan implements RunInBatch {
     }
 
     private void doPersistNodeInfo() {
-        if (restoreCategories) {
-            LOG.debug("doPersistNodeInfo: Restoring {} categories to DB", getNode().getCategories().size());
-        }
-        if (!isAborted() || restoreCategories) {
+        if (!isAborted()) {
             getProvisionService().updateNodeAttributes(getNode());
+        } else {
+            final OnmsNode node = getNode();
+            if (node != null && getNodeId() != null && getForeignSource() != null && node.getForeignId() != null) {
+                getProvisionService().reconcileRequisitionMetadataToDb(getNodeId(), getForeignSource(), node.getForeignId());
+            }
         }
     }
 

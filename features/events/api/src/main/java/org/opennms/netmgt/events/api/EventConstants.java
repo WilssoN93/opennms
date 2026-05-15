@@ -470,10 +470,15 @@ public abstract class EventConstants {
 
     /** Constant <code>PROVISION_SCAN_COMPLETE_UEI="uei.opennms.org/internal/provisiond/nod"{trunked}</code> */
     public static final String PROVISION_SCAN_COMPLETE_UEI="uei.opennms.org/internal/provisiond/nodeScanCompleted";
+    /** Constant <code>PROVISION_SCAN_PARTIALLY_COMPLETED_UEI="uei.opennms.org/internal/provisiond/nod"{trunked}</code> */
+    public static final String PROVISION_SCAN_PARTIALLY_COMPLETED_UEI="uei.opennms.org/internal/provisiond/nodeScanPartiallyCompleted";
     /** Constant <code>PROVISION_SCAN_ABORTED_UEI="uei.opennms.org/internal/provisiond/nod"{trunked}</code> */
     public static final String PROVISION_SCAN_ABORTED_UEI="uei.opennms.org/internal/provisiond/nodeScanAborted";
 
     public static final String PROVISION_SCHEDULED_NODE_SCAN_STARTED ="uei.opennms.org/internal/provisiond/scheduledNodeScanStarted";
+
+    /** Used on {@link #PROVISION_SCAN_PARTIALLY_COMPLETED_UEI} to indicate how many scan steps failed. */
+    public static final String PARM_PROVISION_FAILED_TASK_COUNT = "provisionFailedTaskCount";
     
     /** Constant <code>PARM_FAILURE_MESSAGE="failureMessage"</code> */
     public static final String PARM_FAILURE_MESSAGE = "failureMessage";

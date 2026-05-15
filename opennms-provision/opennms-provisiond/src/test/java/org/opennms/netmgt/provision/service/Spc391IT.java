@@ -103,7 +103,7 @@ public class Spc391IT extends ProvisioningITCase {
         @JUnitSnmpAgent(host="10.0.0.4", port=161, resource="classpath:/snmpwalk-space.properties")
     })
     public void testScanSpaceDevice() throws Exception {
-        final String[] ueis = { EventConstants.PROVISION_SCAN_COMPLETE_UEI, EventConstants.PROVISION_SCAN_ABORTED_UEI };
+        final String[] ueis = { EventConstants.PROVISION_SCAN_COMPLETE_UEI, EventConstants.PROVISION_SCAN_PARTIALLY_COMPLETED_UEI, EventConstants.PROVISION_SCAN_ABORTED_UEI };
         final CountDownLatch eventReceived = anticipateEvents(1, ueis);
 
         System.err.println("triggering import");
