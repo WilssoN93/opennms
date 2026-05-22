@@ -967,7 +967,9 @@ abstract public class PollerConfigManager implements PollerConfig  {
                 return false;
             }
             for(final Package pkg : packages()) {
-                if (isServiceInPackageAndEnabled(svcName, pkg) && isInterfaceInPackage(ipaddr, pkg)) {
+                if (!pkg.getPerspectiveOnly()
+                        && isServiceInPackageAndEnabled(svcName, pkg)
+                        && isInterfaceInPackage(ipaddr, pkg)) {
                     return true;
                 }
             }

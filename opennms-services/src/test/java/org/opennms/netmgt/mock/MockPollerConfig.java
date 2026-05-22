@@ -39,6 +39,7 @@ import java.util.TreeMap;
 import java.util.Vector;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiPredicate;
 
 import org.opennms.netmgt.config.BasicScheduleUtils;
 import org.opennms.netmgt.config.PollerConfig;
@@ -84,6 +85,12 @@ public class MockPollerConfig extends OverrideablePollOutagesDaoImpl implements 
     private boolean m_pathOutageEnabled = false;
 
     private AtomicInteger m_rebuildPackageIpListMapCallCount = new AtomicInteger(0);
+
+    private BiPredicate<String, String> m_isPolledPredicate = (ip, svc) -> true;
+
+    private boolean m_overrideFindPackageForService;
+
+    private Package m_findPackageForServiceResult;
 
     private boolean m_serviceUnresponsiveEnabled = false;
 
@@ -386,7 +393,7 @@ public class MockPollerConfig extends OverrideablePollOutagesDaoImpl implements 
 
     @Override
     public boolean isPolled(final String ipaddr, final String svcName) {
-        return true;
+        return m_isPolledPredicate.test(ipaddr, svcName);
     }
 
     @Override
@@ -415,6 +422,26 @@ public class MockPollerConfig extends OverrideablePollOutagesDaoImpl implements 
 
     public void resetRebuildPackageIpListMapCallCount() {
         m_rebuildPackageIpListMapCallCount.set(0);
+    }
+
+    public void setIsPolledPredicate(final BiPredicate<String, String> isPolledPredicate) {
+        m_isPolledPredicate = isPolledPredicate != null ? isPolledPredicate : (ip, svc) -> true;
+    }
+
+    /**
+     * Forces {@link #findPackageForService(String, String)} to return a fixed value (may be null).
+     */
+    public void setFindPackageForServiceResult(final Package pkg) {
+        m_overrideFindPackageForService = true;
+        m_findPackageForServiceResult = pkg;
+    }
+
+    @Override
+    public Package findPackageForService(final String ipAddr, final String serviceName) {
+        if (m_overrideFindPackageForService) {
+            return m_findPackageForServiceResult;
+        }
+        return PollerConfig.super.findPackageForService(ipAddr, serviceName);
     }
 
     @Override

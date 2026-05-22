@@ -23,8 +23,10 @@ package org.opennms.netmgt.poller;
 
 import java.lang.reflect.UndeclaredThrowableException;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,13 +42,16 @@ import org.opennms.netmgt.config.poller.Package;
 import org.opennms.netmgt.daemon.AbstractServiceDaemon;
 import org.opennms.netmgt.dao.api.MonitoredServiceDao;
 import org.opennms.netmgt.dao.api.OutageDao;
+import org.opennms.netmgt.events.api.EventConstants;
 import org.opennms.netmgt.events.api.EventIpcManager;
+import org.opennms.netmgt.events.api.model.IEvent;
 import org.opennms.netmgt.model.OnmsEvent;
 import org.opennms.netmgt.model.OnmsIpInterface;
 import org.opennms.netmgt.model.OnmsMonitoredService;
 import org.opennms.netmgt.model.OnmsOutage;
 import org.opennms.netmgt.poller.pollables.DbPollEvent;
 import org.opennms.netmgt.poller.pollables.PollEvent;
+import org.opennms.netmgt.poller.pollables.PollableInterface;
 import org.opennms.netmgt.poller.pollables.PollableNetwork;
 import org.opennms.netmgt.poller.pollables.PollableNode;
 import org.opennms.netmgt.poller.pollables.PollableService;
@@ -75,6 +80,11 @@ import com.google.common.annotations.VisibleForTesting;
  * @version $Id: $
  */
 public class Poller extends AbstractServiceDaemon {
+
+    /** Max wait for in-memory pollable teardown during unschedule (avoids blocking the event thread indefinitely). */
+    private static final int UNSCHEDULE_DELETE_WAIT_MS = 5000;
+
+    private static final int UNSCHEDULE_DELETE_POLL_MS = 20;
 
     private static final Logger LOG = LoggerFactory.getLogger(Poller.class);
 
@@ -430,6 +440,414 @@ public class Poller extends AbstractServiceDaemon {
      * @param svcName a {@link String} object.
      * @param pollableNode a {@link PollableNode} object
      */
+    /**
+     * Reconciles in-memory pollables for one node against DB inventory and poller packages.
+     * Caller must invoke {@link PollerConfig#rebuildPackageIpListMap()} first when filters may have changed.
+     */
+    public void reconcileNode(
+            final int nodeId,
+            String nodeLabel,
+            final String nodeLocation,
+            final IEvent sourceEvent,
+            final boolean rescheduleExisting) {
+        if (nodeId <= 0) {
+            LOG.warn("Invalid node ID {}, skipping reconcile", nodeId);
+            return;
+        }
+        if (sourceEvent == null) {
+            LOG.warn("sourceEvent is null, skipping reconcile for node {}", nodeId);
+            return;
+        }
+
+        final Date closeDate = sourceEvent.getTime();
+
+        final Set<PollerEventProcessor.Service> databaseServices = new HashSet<>();
+        for (final String[] s : m_queryManager.getNodeServices(nodeId)) {
+            databaseServices.add(new PollerEventProcessor.Service(s));
+        }
+        LOG.debug("# of Services in Database for node {}: {}", nodeId, databaseServices.size());
+        LOG.trace("Database Services for node {}: {}", nodeId, databaseServices);
+
+        PollableNode pnode = getNetwork().getNode(nodeId);
+        if (pnode == null) {
+            LOG.debug("Node {} is not already being polled.", nodeId);
+        } else {
+            if (pnode.getNodeLabel() != null) {
+                nodeLabel = pnode.getNodeLabel();
+            }
+            reconcileInMemoryServices(pnode, databaseServices, sourceEvent, nodeId, closeDate, rescheduleExisting);
+        }
+
+        scheduleMissingDatabaseServices(nodeId, nodeLabel, nodeLocation, sourceEvent, pnode, databaseServices, closeDate);
+    }
+
+    /**
+     * Aligns in-memory pollables and {@code ifservices} status with current local package resolution
+     * (same rules as the UI after {@link PollerConfig#rebuildPackageIpListMap()}). Used for category
+     * membership changes so existing pollables are not left running when package resolution is N/A.
+     * Caller must rebuild the package IP map before invoking this method.
+     */
+    public void syncNodeServicesToPackageResolution(
+            final int nodeId,
+            String nodeLabel,
+            final String nodeLocation,
+            final IEvent sourceEvent) {
+        if (nodeId <= 0) {
+            LOG.warn("Invalid node ID {}, skipping package resolution sync", nodeId);
+            return;
+        }
+        if (sourceEvent == null) {
+            LOG.warn("sourceEvent is null, skipping package resolution sync for node {}", nodeId);
+            return;
+        }
+
+        final Date closeDate = sourceEvent.getTime();
+        final Set<PollerEventProcessor.Service> databaseServices = new HashSet<>();
+        for (final String[] s : m_queryManager.getNodeServices(nodeId)) {
+            databaseServices.add(new PollerEventProcessor.Service(s));
+        }
+
+        PollableNode pnode = getNetwork().getNode(nodeId);
+        if (pnode != null && pnode.getNodeLabel() != null) {
+            nodeLabel = pnode.getNodeLabel();
+        }
+
+        for (final PollerEventProcessor.Service databaseService : databaseServices) {
+            syncDatabaseServiceToPackageResolution(nodeId, nodeLabel, nodeLocation, sourceEvent, closeDate,
+                    databaseService);
+        }
+
+        final boolean categorySync = isCategoryMembershipChangedEvent(sourceEvent);
+        enforceNotPolledStatusForServicesWithoutPackage(nodeId, databaseServices, categorySync);
+
+        pnode = getNetwork().getNode(nodeId);
+        if (pnode != null) {
+            reconcileInMemoryServices(pnode, databaseServices, sourceEvent, nodeId, closeDate, false);
+        }
+
+        if (categorySync) {
+            logCategorySyncResidualActiveServices(nodeId, databaseServices);
+        }
+    }
+
+    private void syncDatabaseServiceToPackageResolution(
+            final int nodeId,
+            final String nodeLabel,
+            final String nodeLocation,
+            final IEvent sourceEvent,
+            final Date closeDate,
+            final PollerEventProcessor.Service databaseService) {
+        if (isCategoryMembershipChangedEvent(sourceEvent)) {
+            syncDatabaseServiceForCategoryMembership(nodeId, nodeLabel, nodeLocation, sourceEvent, closeDate,
+                    databaseService);
+            return;
+        }
+        syncDatabaseServiceForPackageResolution(nodeId, nodeLabel, nodeLocation, sourceEvent, closeDate,
+                databaseService);
+    }
+
+    /**
+     * Category membership changes: stop polling when no local package applies; do not apply NMS-7761
+     * "pretend still matches" or reschedule from a stale package map when no pollable exists.
+     */
+    private void syncDatabaseServiceForCategoryMembership(
+            final int nodeId,
+            final String nodeLabel,
+            final String nodeLocation,
+            final IEvent sourceEvent,
+            final Date closeDate,
+            final PollerEventProcessor.Service databaseService) {
+        final String ipAddr = normalizeServiceAddress(databaseService.getAddress());
+        final String serviceName = databaseService.getServiceName();
+        final Package livePkg = m_pollerConfig.findPackageForService(ipAddr, serviceName);
+
+        PollableNode pnode = getNetwork().getNode(nodeId);
+        PollableService pollable = pnode == null ? null
+                : pnode.getService(databaseService.getInetAddress(), serviceName);
+
+        if (livePkg == null) {
+            stopPollingForServiceWithoutPackage(nodeId, sourceEvent, closeDate, databaseService, pollable);
+            LOG.warn("Category sync for node {}: {} findPackageForService=null, pollablePresent={}, marked Not Polled.",
+                    nodeId, databaseService, pollable != null && !pollable.isDeleted());
+            return;
+        }
+
+        if (pollable == null || pollable.isDeleted()) {
+            LOG.warn("Category sync for node {}: {} has no in-memory pollable but findPackageForService={}; "
+                    + "skipping scheduleService (avoids stale package map re-activating Managed status).",
+                    nodeId, databaseService, livePkg.getName());
+            return;
+        }
+
+        if (!scheduledPackageNameMatches(pollable, livePkg.getName(), true)) {
+            LOG.warn("Category sync for node {}: {} package membership changed (was {}, now {}). Rescheduling.",
+                    nodeId, databaseService, scheduledPackageName(pollable), livePkg.getName());
+            unschedulePollableService(pollable, sourceEvent, nodeId, closeDate, databaseService);
+            pnode = getNetwork().getNode(nodeId);
+            scheduleService(nodeId, nodeLabel, nodeLocation, ipAddr, serviceName, pnode);
+            return;
+        }
+
+        LOG.debug("Category sync for node {}: {} still matches local polling package {}.",
+                nodeId, databaseService, livePkg.getName());
+    }
+
+    private void syncDatabaseServiceForPackageResolution(
+            final int nodeId,
+            final String nodeLabel,
+            final String nodeLocation,
+            final IEvent sourceEvent,
+            final Date closeDate,
+            final PollerEventProcessor.Service databaseService) {
+        final String ipAddr = normalizeServiceAddress(databaseService.getAddress());
+        final String serviceName = databaseService.getServiceName();
+        final Package livePkg = m_pollerConfig.findPackageForService(ipAddr, serviceName);
+
+        PollableNode pnode = getNetwork().getNode(nodeId);
+        PollableService pollable = pnode == null ? null
+                : pnode.getService(databaseService.getInetAddress(), serviceName);
+
+        if (livePkg == null) {
+            stopPollingForServiceWithoutPackage(nodeId, sourceEvent, closeDate, databaseService, pollable);
+            return;
+        }
+
+        if (pollable == null || pollable.isDeleted()) {
+            LOG.debug("{} is being scheduled to match package {}.", databaseService, livePkg.getName());
+            scheduleService(nodeId, nodeLabel, nodeLocation, ipAddr, serviceName, pnode);
+            return;
+        }
+
+        if (!scheduledPackageNameMatches(pollable, livePkg.getName(), false)) {
+            LOG.warn("{} package membership changed (was {}, now {}). Rescheduling in-memory pollable.",
+                    databaseService, scheduledPackageName(pollable), livePkg.getName());
+            unschedulePollableService(pollable, sourceEvent, nodeId, closeDate, databaseService);
+            pnode = getNetwork().getNode(nodeId);
+            scheduleService(nodeId, nodeLabel, nodeLocation, ipAddr, serviceName, pnode);
+            return;
+        }
+
+        LOG.debug("{} still matches local polling package {}.", databaseService, livePkg.getName());
+    }
+
+    private void stopPollingForServiceWithoutPackage(
+            final int nodeId,
+            final IEvent sourceEvent,
+            final Date closeDate,
+            final PollerEventProcessor.Service databaseService,
+            final PollableService pollable) {
+        markNotPolledInDatabase(nodeId, databaseService);
+        if (pollable != null && !pollable.isDeleted()) {
+            LOG.warn("{} is no longer in a local polling package. Unscheduling.", databaseService);
+            unschedulePollableService(pollable, sourceEvent, nodeId, closeDate, databaseService);
+        } else {
+            LOG.warn("{} is no longer in a local polling package. Closing any pending outages.", databaseService);
+            closeOutagesForService(sourceEvent, nodeId, closeDate, databaseService);
+        }
+    }
+
+    /**
+     * Ensures services that no longer resolve to a local package are marked Not Polled in the database,
+     * even if no in-memory pollable existed at sync time.
+     */
+    private void enforceNotPolledStatusForServicesWithoutPackage(
+            final int nodeId,
+            final Set<PollerEventProcessor.Service> databaseServices,
+            final boolean categorySync) {
+        if (m_monitoredServiceDao == null) {
+            return;
+        }
+        for (final PollerEventProcessor.Service databaseService : databaseServices) {
+            final String ipAddr = normalizeServiceAddress(databaseService.getAddress());
+            final String serviceName = databaseService.getServiceName();
+            if (hasLocalPollingPackage(ipAddr, serviceName)) {
+                if (categorySync) {
+                    final Package pkg = m_pollerConfig.findPackageForService(ipAddr, serviceName);
+                    final OnmsMonitoredService service = m_monitoredServiceDao.get(nodeId,
+                            databaseService.getInetAddress(), serviceName);
+                    if (service != null && "A".equals(service.getStatus())) {
+                        LOG.warn("Category sync for node {}: {} still status=A; findPackageForService={} so "
+                                + "enforceNotPolled was skipped (check filter cache / package order).",
+                                nodeId, databaseService, pkg == null ? null : pkg.getName());
+                    }
+                }
+                continue;
+            }
+            final OnmsMonitoredService service = m_monitoredServiceDao.get(nodeId,
+                    databaseService.getInetAddress(), serviceName);
+            if (service != null && "A".equals(service.getStatus())) {
+                LOG.warn("{} is still Active in the database but no longer in a local polling package. Marking as Not Polled.",
+                        databaseService);
+                markNotPolledInDatabase(nodeId, databaseService);
+            }
+        }
+    }
+
+    private static boolean isCategoryMembershipChangedEvent(final IEvent sourceEvent) {
+        return sourceEvent != null
+                && EventConstants.NODE_CATEGORY_MEMBERSHIP_CHANGED_EVENT_UEI.equals(sourceEvent.getUei());
+    }
+
+    private void logCategorySyncResidualActiveServices(
+            final int nodeId,
+            final Set<PollerEventProcessor.Service> databaseServices) {
+        if (m_monitoredServiceDao == null) {
+            return;
+        }
+        for (final PollerEventProcessor.Service databaseService : databaseServices) {
+            final OnmsMonitoredService service = m_monitoredServiceDao.get(nodeId,
+                    databaseService.getInetAddress(), databaseService.getServiceName());
+            if (service == null || !"A".equals(service.getStatus())) {
+                continue;
+            }
+            final String ipAddr = normalizeServiceAddress(databaseService.getAddress());
+            final Package pkg = m_pollerConfig.findPackageForService(ipAddr, databaseService.getServiceName());
+            if (pkg == null) {
+                LOG.warn("Category sync finished for node {} but {} is still status=A with findPackageForService=null "
+                        + "(lastgood may be stale; UI can show availability % instead of Not Monitored).",
+                        nodeId, databaseService);
+            } else {
+                LOG.warn("Category sync finished for node {} but {} is still status=A with findPackageForService={}.",
+                        nodeId, databaseService, pkg.getName());
+            }
+        }
+    }
+
+    private static String normalizeServiceAddress(final String ipAddr) {
+        return InetAddressUtils.normalize(ipAddr);
+    }
+
+    private static boolean scheduledPackageNameMatches(
+            final PollableService pollable,
+            final String livePackageName,
+            final boolean categoryMembershipSync) {
+        final String scheduledName = scheduledPackageName(pollable);
+        if (scheduledName == null) {
+            if (categoryMembershipSync) {
+                return false;
+            }
+            // Pollable has no embedded package yet; do not tear down an active schedule (NMS-7761).
+            return true;
+        }
+        return scheduledName.equals(livePackageName);
+    }
+
+    private static String scheduledPackageName(final PollableService pollable) {
+        if (pollable.getPollConfig() instanceof PollableServiceConfig) {
+            return ((PollableServiceConfig) pollable.getPollConfig()).getPackageName();
+        }
+        return null;
+    }
+
+    private void reconcileInMemoryServices(
+            final PollableNode pnode,
+            final Set<PollerEventProcessor.Service> databaseServices,
+            final IEvent sourceEvent,
+            final int nodeId,
+            final Date closeDate,
+            final boolean rescheduleExisting) {
+        for (final PollableInterface iface : pnode.getInterfaces()) {
+            final List<PollableService> services = new ArrayList<>(iface.getServices());
+            for (final PollableService svc : services) {
+                final PollerEventProcessor.Service serviceKey =
+                        new PollerEventProcessor.Service(svc.getIpAddr(), svc.getSvcName());
+                final boolean noLocalPackage = !hasLocalPollingPackage(serviceKey.getAddress(), serviceKey.getServiceName());
+                final boolean shouldUnschedule = !databaseServices.contains(serviceKey)
+                        || rescheduleExisting
+                        || noLocalPackage;
+                if (shouldUnschedule) {
+                    if (noLocalPackage) {
+                        LOG.warn("{} is no longer in a local polling package. Unscheduling.", serviceKey);
+                        if (databaseServices.contains(serviceKey)) {
+                            markNotPolledInDatabase(nodeId, serviceKey);
+                        }
+                    } else {
+                        LOG.debug("{} is being unscheduled during reconcile.", serviceKey);
+                    }
+                    unschedulePollableService(svc, sourceEvent, nodeId, closeDate, serviceKey);
+                }
+            }
+        }
+    }
+
+    private void scheduleMissingDatabaseServices(
+            final int nodeId,
+            final String nodeLabel,
+            final String nodeLocation,
+            final IEvent sourceEvent,
+            PollableNode pnode,
+            final Set<PollerEventProcessor.Service> databaseServices,
+            final Date closeDate) {
+        for (final PollerEventProcessor.Service databaseService : databaseServices) {
+            pnode = getNetwork().getNode(nodeId);
+            if (isStillScheduled(pnode, databaseService)) {
+                LOG.debug("{} is being skipped. Already scheduled.", databaseService);
+                continue;
+            }
+
+            LOG.debug("{} is being scheduled (or rescheduled) for polling.", databaseService);
+            scheduleService(nodeId, nodeLabel, nodeLocation, databaseService.getAddress(),
+                    databaseService.getServiceName(), pnode);
+            if (!hasLocalPollingPackage(databaseService.getAddress(), databaseService.getServiceName())) {
+                LOG.warn("{} is no longer in a local polling package. Closing any pending outages.", databaseService);
+                closeOutagesForService(sourceEvent, nodeId, closeDate, databaseService);
+                markNotPolledInDatabase(nodeId, databaseService);
+            }
+        }
+    }
+
+    private static boolean isStillScheduled(final PollableNode pnode, final PollerEventProcessor.Service databaseService) {
+        if (pnode == null) {
+            return false;
+        }
+        final PollableService service = pnode.getService(databaseService.getInetAddress(), databaseService.getServiceName());
+        return service != null && !service.isDeleted();
+    }
+
+    private void unschedulePollableService(
+            final PollableService service,
+            final IEvent sourceEvent,
+            final int nodeId,
+            final Date closeDate,
+            final PollerEventProcessor.Service serviceKey) {
+        service.delete();
+        final long deadlineMs = System.currentTimeMillis() + UNSCHEDULE_DELETE_WAIT_MS;
+        while (!service.isDeleted()) {
+            if (System.currentTimeMillis() >= deadlineMs) {
+                LOG.warn("Pollable service {} on node {} did not delete within {}ms; proceeding with outage cleanup.",
+                        serviceKey, nodeId, UNSCHEDULE_DELETE_WAIT_MS);
+                break;
+            }
+            try {
+                Thread.sleep(UNSCHEDULE_DELETE_POLL_MS);
+            } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        closeOutagesForService(sourceEvent, nodeId, closeDate, serviceKey);
+    }
+
+    private void closeOutagesForService(
+            final IEvent event,
+            final int nodeId,
+            final Date closeDate,
+            final PollerEventProcessor.Service service) {
+        m_queryManager.closeOutagesForService(closeDate, event.getDbid(), nodeId, service.getAddress(), service.getServiceName());
+    }
+
+    /**
+     * Uses the same package selection rules as {@link #scheduleService(OnmsMonitoredService, Set)}.
+     * Non-perspective packages only; does not rebuild the package IP map (caller must do that when filters change).
+     */
+    private boolean hasLocalPollingPackage(final String ipAddr, final String serviceName) {
+        return m_pollerConfig.findPackageForService(normalizeServiceAddress(ipAddr), serviceName) != null;
+    }
+
+    private void markNotPolledInDatabase(final int nodeId, final PollerEventProcessor.Service serviceKey) {
+        m_queryManager.updateServiceStatus(nodeId, serviceKey.getAddress(), serviceKey.getServiceName(), "N");
+    }
+
     public void scheduleService(final int nodeId, final String nodeLabel, final String nodeLocation, final String ipAddr, final String svcName, PollableNode pollableNode) {
         final String normalizedAddress = InetAddressUtils.normalize(ipAddr);
         try {

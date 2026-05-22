@@ -380,8 +380,10 @@ public abstract class PollableElement {
     public void processStatusChange(Date date) {
         if (getStatus().isDown() && isStatusChanged()) {
             processGoingDown(date);
+            resetStatusChanged();
         } else if (getStatus().isUp() && isStatusChanged()) {
             processComingUp(date);
+            resetStatusChanged();
         }
     }
 

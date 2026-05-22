@@ -27,13 +27,12 @@ import static org.opennms.core.utils.InetAddressUtils.str;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
 import org.opennms.core.utils.ConfigFileConstants;
 import org.opennms.netmgt.config.PollerConfig;
+import org.opennms.netmgt.filter.FilterDaoFactory;
 import org.opennms.netmgt.events.api.EventConstants;
 import org.opennms.netmgt.events.api.EventIpcManager;
 import org.opennms.netmgt.events.api.EventListener;
@@ -603,8 +602,8 @@ final class PollerEventProcessor implements EventListener {
                 serviceDeletedHandler(event);
             }
         } else if (event.getUei().equals(EventConstants.NODE_CATEGORY_MEMBERSHIP_CHANGED_EVENT_UEI)) {
-            if (event.getNodeid() > 0) { 
-                serviceReschedule(event, false);
+            if (event.getNodeid() > 0) {
+                handleNodeCategoryMembershipChanged(event);
             }
         } else if (event.getUei().equals(EventConstants.NODE_LOCATION_CHANGED_EVENT_UEI)) {
             if (event.getNodeid() > 0) {
@@ -618,6 +617,43 @@ final class PollerEventProcessor implements EventListener {
         } // end single event process
 
     } // end onEvent()
+
+    /**
+     * Category changes alter filter rules; flush cached IP lists before reconcile so package
+     * membership matches the database. Selective reconcile only (NMS-7761): do not use
+     * rescheduleExisting=true, which would tear down and recreate all pollables on the node.
+     */
+    private void handleNodeCategoryMembershipChanged(final IEvent event) {
+        LOG.warn("Processing nodeCategoryMembershipChanged for node {} (eventId={}).",
+                event.getNodeid(), event.getDbid());
+        FilterDaoFactory.getInstance().flushActiveIpAddressListCache();
+        getPollerConfig().rebuildPackageIpListMap();
+        syncNodeServicesAfterCategoryChange(event);
+    }
+
+    private void syncNodeServicesAfterCategoryChange(final IEvent event) {
+        final Long nodeId = event.getNodeid();
+
+        if (nodeId == null || nodeId <= 0) {
+            LOG.warn("Invalid node ID for event, skipping package resolution sync: {}", event);
+            return;
+        }
+        String nodeLabel = EventUtils.getParm(event, EventConstants.PARM_NODE_LABEL);
+        try {
+            nodeLabel = getPoller().getQueryManager().getNodeLabel(nodeId.intValue());
+        } catch (final Exception e) {
+            LOG.error("Unable to retrieve nodeLabel for node {}", nodeId, e);
+        }
+
+        String nodeLocation = null;
+        try {
+            nodeLocation = getPoller().getQueryManager().getNodeLocation(nodeId.intValue());
+        } catch (final Exception e) {
+            LOG.error("Unable to retrieve nodeLocation for node {}", nodeId, e);
+        }
+
+        getPoller().syncNodeServicesToPackageResolution(nodeId.intValue(), nodeLabel, nodeLocation, event);
+    }
 
     private void serviceReschedule(IEvent event, boolean rescheduleExisting)   {
         final Long nodeId = event.getNodeid();
@@ -641,7 +677,7 @@ final class PollerEventProcessor implements EventListener {
         }
 
         getPollerConfig().rebuildPackageIpListMap();
-        serviceReschedule(nodeId, nodeLabel, nodeLocation, event, rescheduleExisting);
+        getPoller().reconcileNode(nodeId.intValue(), nodeLabel, nodeLocation, event, rescheduleExisting);
     }
 
     private void rescheduleAllServices(IEvent event) {
@@ -662,112 +698,8 @@ final class PollerEventProcessor implements EventListener {
                 LOG.error("Unable to retrieve nodeLocation for node {}", nodeId, e);
             }
 
-            serviceReschedule(nodeId, nodeLabel, nodeLocation, event, true);
+            getPoller().reconcileNode(nodeId.intValue(), nodeLabel, nodeLocation, event, true);
         }
-    }
-
-    private void serviceReschedule(Long nodeId, String nodeLabel, String nodeLocation,
-                                   IEvent sourceEvent, boolean rescheduleExisting) {
-        if (nodeId == null || nodeId <= 0) {
-            LOG.warn("Invalid node ID for event, skipping service reschedule: {}", sourceEvent);
-            return;
-        }
-
-        Date closeDate = sourceEvent.getTime();
-
-        final Set<Service> databaseServices = new HashSet<>();
-
-        for (final String[] s : getPoller().getQueryManager().getNodeServices(nodeId.intValue())) {
-            databaseServices.add(new Service(s));
-        }
-        LOG.debug("# of Services in Database: {}", databaseServices.size());
-        LOG.trace("Database Services: {}", databaseServices);
-
-        final Set<Service> polledServices = new HashSet<>();
-
-        final PollableNode pnode = getNetwork().getNode(nodeId.intValue());
-        if (pnode == null) {
-            LOG.debug("Node {} is not already being polled.", nodeId);
-        } else {
-            if (pnode.getNodeLabel() != null) {
-                nodeLabel = pnode.getNodeLabel();
-            }
-
-            for (final PollableInterface iface : pnode.getInterfaces()) {
-                for (final PollableService s : iface.getServices()) {
-                    polledServices.add(new Service(s.getIpAddr(), s.getSvcName()));
-                }
-            }
-            LOG.debug("# of Polled Services: {}", polledServices.size());
-            LOG.trace("Polled Services: {}", polledServices);
-        }
-
-        // polledServices contains the list of services that are currently being polled
-        // if any of these are no longer in the database, then remove them
-        for (final Iterator<Service> iter = polledServices.iterator(); iter.hasNext(); ) {
-            final Service polledService = iter.next();
-
-            if (!databaseServices.contains(polledService)) {
-                // We are polling the service, but it no longer exists.  Stop polling.
-                if (pnode != null) {
-                    final PollableService service = pnode.getService(polledService.getInetAddress(), polledService.getServiceName());
-                    // Delete the service
-                    service.delete();
-
-                    while (!service.isDeleted()) {
-                        try {
-                            Thread.sleep(20);
-                        } catch (final InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
-                    }
-                }
-
-                // Close outages.
-                LOG.debug("{} should no longer be polled.  Resolving outages.", polledService);
-                closeOutagesForService(sourceEvent, nodeId, closeDate, polledService);
-                iter.remove();
-            }
-        }
-
-        // Delete the remaining services if we which to reschedule those that are already active
-        if (rescheduleExisting && pnode != null) {
-            for (final Iterator<Service> iter = polledServices.iterator(); iter.hasNext(); ) {
-                final Service polledService = iter.next();
-                final PollableService service = pnode.getService(polledService.getInetAddress(), polledService.getServiceName());
-                // Delete the service
-                service.delete();
-
-                while (!service.isDeleted()) {
-                    try {
-                        Thread.sleep(20);
-                    } catch (final InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-                iter.remove();
-            }
-        }
-
-        // Schedule all of the services, if they are not already
-        for (final Service databaseService : databaseServices) {
-            if (polledServices.contains(databaseService)) {
-                LOG.debug("{} is being skipped. Already scheduled.", databaseService);
-                continue;
-            }
-
-            LOG.debug("{} is being scheduled (or rescheduled) for polling.", databaseService);
-            getPoller().scheduleService(nodeId.intValue(), nodeLabel, nodeLocation, databaseService.getAddress(), databaseService.getServiceName(), pnode);
-            if (!getPollerConfig().isPolled(databaseService.getAddress(), databaseService.getServiceName())) {
-                LOG.debug("{} is no longer polled.  Closing any pending outages.", databaseService);
-                closeOutagesForService(sourceEvent, nodeId, closeDate, databaseService);
-            }
-        }
-    }
-
-    protected void closeOutagesForService(final IEvent event, final Long nodeId, final Date closeDate,
-                                          final Service polledService) {
-        getPoller().getQueryManager().closeOutagesForService(closeDate, event.getDbid(), nodeId.intValue(), polledService.getAddress(), polledService.getServiceName());
     }
 
     private void scheduledOutagesChangeHandler() {
