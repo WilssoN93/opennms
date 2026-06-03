@@ -396,6 +396,11 @@ public class DefaultPollContext implements PollContext, EventListener, Initializ
         return getPollerConfig().isServiceUnresponsiveEnabled();
     }
 
+    @Override
+    public long getEventTreeLockTimeoutMs() {
+        return getPollerConfig().getEventTreeLockTimeoutMs();
+    }
+
     /* (non-Javadoc)
      * @see org.opennms.netmgt.eventd.EventListener#onEvent(org.opennms.netmgt.events.api.model.IEvent)
      */

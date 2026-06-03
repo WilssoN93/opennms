@@ -106,4 +106,9 @@ public interface PollContext {
 
     AsyncPollingEngine getAsyncPollingEngine();
 
+    /**
+     * Maximum time in milliseconds for event-thread acquisition of a per-node tree lock.
+     */
+    long getEventTreeLockTimeoutMs();
+
 }

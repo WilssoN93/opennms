@@ -284,7 +284,7 @@ public class PollablesIT {
         }
     }
 
-    private PollableNetwork createPollableNetwork(final DataSource db, final ScheduleTimer scheduler, final PollerConfig pollerConfig, PollContext pollContext, ReadablePollOutagesDao pollOutagesDao) throws UnknownHostException {
+    private PollableNetwork createPollableNetwork(final DataSource db, final ScheduleTimer scheduler, final PollerConfig pollerConfig, PollContext pollContext, ReadablePollOutagesDao pollOutagesDao) throws Exception {
 
         final PollableNetwork pNetwork = new PollableNetwork(pollContext);
 
@@ -311,9 +311,13 @@ public class PollablesIT {
                 Number svcLostEventId = (Number)rs.getObject("svcLostEventId");
                 String svcLostUei = rs.getString("svcLostEventUei");
 
-                addServiceToNetwork(pNetwork, nodeId, nodeLabel, null, ipAddr,
-                                    serviceName, svcLostEventId, svcLostUei,
-                                    date, scheduler, pollerConfig, pollOutagesDao);
+                try {
+                    addServiceToNetwork(pNetwork, nodeId, nodeLabel, null, ipAddr,
+                                        serviceName, svcLostEventId, svcLostUei,
+                                        date, scheduler, pollerConfig, pollOutagesDao);
+                } catch (final LockUnavailable e) {
+                    throw new SQLException("Unable to add service to pollable network", e);
+                }
 
                 // schedule.schedule();
                 //MockUtil.println("Created Pollable Service "+svc+" with package "+pkg.getName());
@@ -352,7 +356,7 @@ public class PollablesIT {
     }
 
     @Test
-    public void testCreateInterface() throws UnknownHostException {
+    public void testCreateInterface() throws Exception {
         int nodeId = 99;
         InetAddress addr = InetAddressUtils.addr("192.168.1.99");
 
@@ -451,7 +455,7 @@ public class PollablesIT {
     }
 
     @Test
-    public void testDeleteService() {
+    public void testDeleteService() throws LockUnavailable {
 
         pDot1Icmp.delete();
 
@@ -543,7 +547,7 @@ public class PollablesIT {
     }
 
     @Test
-    public void testDeleteServiceStatus() {
+    public void testDeleteServiceStatus() throws LockUnavailable {
         anticipateDown(mDot1);
 
         mDot1Icmp.bringDown();
@@ -1913,7 +1917,7 @@ public class PollablesIT {
     }
 
     private void testAddUpSvcToUpNode(int nodeId, String nodeLabel, String nodeLocation,
-            String ipAddr, String existingSvcName, String newSvcName) {
+            String ipAddr, String existingSvcName, String newSvcName) throws Exception {
 
         PollableService pExistingSvc = m_network.getService(nodeId, getInetAddress(ipAddr), existingSvcName);
         assertNotNull(pExistingSvc);
@@ -1965,7 +1969,7 @@ public class PollablesIT {
     }
 
     private void addDownServiceToDownNode(int nodeId, String nodeLabel, String nodeLocation,
-            String ipAddr, String existingSvcName, String newSvcName) {
+            String ipAddr, String existingSvcName, String newSvcName) throws Exception {
         MockNode mNode = m_mockNetwork.getNode(nodeId);
 
         PollableService pExistingSvc = m_network.getService(nodeId, getInetAddress(ipAddr), existingSvcName);
@@ -2044,7 +2048,7 @@ public class PollablesIT {
     }
 
     private void testAddDownServiceToUpNode(int nodeId, String nodeLabel, String nodeLocation,
-            String ipAddr, String existingSvcName, String newSvcName) {
+            String ipAddr, String existingSvcName, String newSvcName) throws Exception {
         PollableService pExistingSvc = m_network.getService(nodeId, getInetAddress(ipAddr), existingSvcName);
         PollableInterface pIface = pExistingSvc.getInterface();
         PollableNode pNode = pExistingSvc.getNode();
@@ -2721,7 +2725,7 @@ public class PollablesIT {
 
     private PollableService addServiceToNetwork(final int nodeId, final String nodeLabel, final String nodeLocation,
                                                 final String ipAddr, final String serviceName,
-                                                final ReadablePollOutagesDao pollOutagesDao) {
+                                                final ReadablePollOutagesDao pollOutagesDao) throws LockUnavailable {
 
         final PollableNode svcNode = m_network.createNodeIfNecessary(nodeId, nodeLabel, nodeLocation);
 
@@ -2743,7 +2747,7 @@ public class PollablesIT {
                                                 Number svcLostEventId, String svcLostUei,
                                                 Date svcLostTime, final ScheduleTimer scheduler,
                                                 final PollerConfig pollerConfig,
-                                                final ReadablePollOutagesDao pollOutagesDao) {
+                                                final ReadablePollOutagesDao pollOutagesDao) throws LockUnavailable {
         InetAddress addr = getInetAddress(ipAddr); 
 
         Package pkg = findPackageForService(pollerConfig, ipAddr, serviceName);

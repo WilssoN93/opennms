@@ -29,6 +29,8 @@ import java.util.Iterator;
 import java.util.Map;
 
 import org.opennms.netmgt.poller.PollStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -39,6 +41,8 @@ import org.opennms.netmgt.poller.PollStatus;
  * @version $Id: $
  */
 abstract public class PollableContainer extends PollableElement {
+
+    private static final Logger LOG = LoggerFactory.getLogger(PollableContainer.class);
 
     private final Map<Object, PollableElement> m_members = new HashMap<Object, PollableElement>();
 
@@ -130,28 +134,32 @@ abstract public class PollableContainer extends PollableElement {
      */
     public void deleteMember(PollableElement member) {
         removeMember(member);
-        if (m_members.size() == 0)
-            this.delete();
+        if (m_members.size() == 0) {
+            try {
+                this.delete();
+            } catch (final LockUnavailable e) {
+                LOG.warn("Unable to delete empty container {} within event tree lock timeout", this, e);
+            }
+        }
     }
     
     /**
      * <p>delete</p>
      */
     @Override
-    public void delete() {
-        Runnable r = new Runnable() {
+    public void delete() throws LockUnavailable {
+        withEventTreeLock(new java.util.concurrent.Callable<Void>() {
             @Override
-            public void run() {
+            public Void call() throws Exception {
                 Collection<PollableElement> members = getMembers();
                 for (Iterator<PollableElement> it = members.iterator(); it.hasNext();) {
                     PollableElement member = it.next();
                     member.delete();
                 }
                 PollableContainer.super.delete();
+                return null;
             }
-        };
-        withTreeLock(r);
-        
+        });
     }
     
     /** {@inheritDoc} */
@@ -282,7 +290,12 @@ abstract public class PollableContainer extends PollableElement {
                 updateStatus(iter.getResult());
             }
         };
-        withTreeLock(r);
+        try {
+            withEventTreeLock(r);
+        } catch (final LockUnavailable e) {
+            LOG.warn("Unable to recalculate status for {} within {}ms", PollableContainer.this,
+                    getEventTreeLockTimeoutMs(), e);
+        }
     }
     
     /**

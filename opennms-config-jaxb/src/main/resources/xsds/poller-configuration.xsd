@@ -116,6 +116,17 @@
           </restriction>
         </simpleType>
       </attribute>
+
+      <attribute default="60000" name="eventTreeLockTimeout" use="optional">
+        <annotation>
+          <documentation>Maximum time in milliseconds for the poller event thread to wait for a per-node tree lock on administrative operations (reload, delete, reconcile). Minimum effective value is 10000.</documentation>
+        </annotation>
+        <simpleType>
+          <restriction base="int">
+            <minInclusive value="1000" />
+          </restriction>
+        </simpleType>
+      </attribute>
     </complexType>
   </element>
 

@@ -456,15 +456,15 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
      * <p>delete</p>
      */
     @Override
-    public void delete() {
-        Runnable r = new Runnable() {
+    public void delete() throws LockUnavailable {
+        withEventTreeLock(new java.util.concurrent.Callable<Void>() {
             @Override
-            public void run() {
+            public Void call() throws Exception {
                 PollableService.super.delete();
                 m_schedule.unschedule();
+                return null;
             }
-        };
-        withTreeLock(r);
+        });
     }
 
     /**

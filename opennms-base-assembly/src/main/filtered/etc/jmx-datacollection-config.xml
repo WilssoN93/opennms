@@ -573,6 +573,15 @@
             <attrib name="Count" alias="ALECtickCounter" type="counter"/>
          </mbean>
 
+         <!-- Per-listener eventd dispatch queue (Poller, Collectd, etc.) -->
+         <mbean name="org.opennms.netmgt.eventd.listener" resource-type="EventListener" objectname="org.opennms.netmgt.eventd:name=eventipc.listener.*,type=gauges">
+            <attrib name="Value" alias="EventIpcListener" type="gauge"/>
+         </mbean>
+         <mbean name="org.opennms.netmgt.eventd.listener.onEvent" resource-type="EventListener" objectname="org.opennms.netmgt.eventd:name=eventipc.listener.*.onEvent,type=timers">
+            <attrib name="Max" alias="EventIpcListenerOnEventMax" type="gauge"/>
+            <attrib name="Count" alias="EventIpcListenerOnEventCount" type="counter"/>
+         </mbean>
+
          <!-- Eventd processing time -->
          <mbean name="org.opennms.netmgt.eventd.process" resource-type="Eventlogs" objectname="org.opennms.netmgt.eventd:name=eventlogs.process*,type=timers">
             <attrib name="50thPercentile" alias="EventProcess50" type="gauge"/>

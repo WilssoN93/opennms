@@ -41,6 +41,7 @@ import org.opennms.netmgt.events.api.model.IParm;
 import org.opennms.netmgt.events.api.model.IValue;
 import org.opennms.netmgt.model.events.EventBuilder;
 import org.opennms.netmgt.model.events.EventUtils;
+import org.opennms.netmgt.poller.pollables.LockUnavailable;
 import org.opennms.netmgt.poller.pollables.PollableInterface;
 import org.opennms.netmgt.poller.pollables.PollableNetwork;
 import org.opennms.netmgt.poller.pollables.PollableNode;
@@ -308,7 +309,14 @@ final class PollerEventProcessor implements EventListener {
         }
 
         PollableService svc = getNetwork().getService(nodeId.intValue(), ipAddr, svcName);
-        svc.delete();
+        if (svc == null) {
+            return;
+        }
+        try {
+            svc.delete();
+        } catch (final LockUnavailable e) {
+            LOG.warn("Unable to delete pollable service {}/{}/{} within event tree lock timeout", nodeId, ipAddr, svcName, e);
+        }
 
     }
 
@@ -357,7 +365,11 @@ final class PollerEventProcessor implements EventListener {
             LOG.error("Nodeid {} does not exist in pollable node map, unable to delete node.", nodeId);
             return;
         }
-        node.delete();
+        try {
+            node.delete();
+        } catch (final LockUnavailable e) {
+            LOG.warn("Unable to delete pollable node {} within event tree lock timeout", nodeId, e);
+        }
 
     }
 
@@ -428,7 +440,11 @@ final class PollerEventProcessor implements EventListener {
             LOG.error("Interface {}/{} does not exist in pollable node map, unable to delete node.", nodeId, event.getInterface());
             return;
         }
-        iface.delete();
+        try {
+            iface.delete();
+        } catch (final LockUnavailable e) {
+            LOG.warn("Unable to delete pollable interface {}/{} within event tree lock timeout", nodeId, ipAddr, e);
+        }
 
     }
 
@@ -453,7 +469,11 @@ final class PollerEventProcessor implements EventListener {
             return;
         }
 
-        svc.delete();
+        try {
+            svc.delete();
+        } catch (final LockUnavailable e) {
+            LOG.warn("Unable to delete pollable service {}/{}/{} within event tree lock timeout", nodeId, ipAddr, service, e);
+        }
 
     }
 
@@ -472,7 +492,8 @@ final class PollerEventProcessor implements EventListener {
             EventBuilder ebldr = null;
             try {
                 getPollerConfig().update();
-                rescheduleAllServices(event);
+                getPollerConfig().rebuildPackageIpListMap();
+                getPoller().refreshServicePackages();
                 // Preparing successful event
                 ebldr = new EventBuilder(EventConstants.RELOAD_DAEMON_CONFIG_SUCCESSFUL_UEI, daemonName);
                 ebldr.addParam(EventConstants.PARM_DAEMON_NAME, daemonName);

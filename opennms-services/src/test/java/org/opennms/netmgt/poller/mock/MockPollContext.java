@@ -182,6 +182,10 @@ public class MockPollContext implements PollContext, EventListener {
         return null;
     }
 
+    @Override
+    public long getEventTreeLockTimeoutMs() {
+        return 60_000L;
+    }
 
     public void setServiceUnresponsiveEnabled(boolean serviceUnresponsiveEnabled) {
         m_serviceUnresponsiveEnabled = serviceUnresponsiveEnabled;

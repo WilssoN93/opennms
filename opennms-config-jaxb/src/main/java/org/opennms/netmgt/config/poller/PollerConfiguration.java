@@ -97,6 +97,12 @@ public class PollerConfiguration implements Serializable {
     private Integer m_maxConcurrentAsyncPolls;
 
     /**
+     * Maximum wait in milliseconds for event-thread tree lock acquisition.
+     */
+    @XmlAttribute(name="eventTreeLockTimeout")
+    private Integer m_eventTreeLockTimeout;
+
+    /**
      * Configuration of node-outage functionality
      */
     @XmlElement(name="node-outage")
@@ -293,6 +299,14 @@ public class PollerConfiguration implements Serializable {
 
     public void setMaxConcurrentAsyncPolls(Integer maxConcurrentAsyncPolls) {
         m_maxConcurrentAsyncPolls = maxConcurrentAsyncPolls;
+    }
+
+    public Integer getEventTreeLockTimeout() {
+        return m_eventTreeLockTimeout == null ? 60000 : m_eventTreeLockTimeout;
+    }
+
+    public void setEventTreeLockTimeout(final Integer eventTreeLockTimeout) {
+        m_eventTreeLockTimeout = eventTreeLockTimeout;
     }
 
     @Override

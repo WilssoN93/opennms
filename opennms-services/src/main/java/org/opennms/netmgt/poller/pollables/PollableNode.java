@@ -94,7 +94,7 @@ public class PollableNode extends PollableContainer {
      * @param addr a {@link java.net.InetAddress} object.
      * @return a {@link org.opennms.netmgt.poller.pollables.PollableInterface} object.
      */
-    public PollableInterface createInterface(final InetAddress addr) {
+    public PollableInterface createInterface(final InetAddress addr) throws LockUnavailable {
         final PollableInterface[] retVal = new PollableInterface[1];
         Runnable r = new Runnable() {
             @Override
@@ -104,7 +104,7 @@ public class PollableNode extends PollableContainer {
                 retVal[0] = iface;
             }
         };
-        withTreeLock(r);
+        withEventTreeLock(r);
         return retVal[0];
     }
 
@@ -161,20 +161,18 @@ public class PollableNode extends PollableContainer {
      * @param addr a {@link java.net.InetAddress} object.
      * @return a {@link org.opennms.netmgt.poller.pollables.PollableService} object.
      */
-    public PollableService createService(final InetAddress addr, final String svcName, final int ifServiceId) {
-        final PollableService[] retVal = new PollableService[1];
-        
-        Runnable r = new Runnable() {
+    public PollableService createService(final InetAddress addr, final String svcName, final int ifServiceId)
+            throws LockUnavailable {
+        return withEventTreeLock(new java.util.concurrent.Callable<PollableService>() {
             @Override
-            public void run() {
+            public PollableService call() throws Exception {
                 PollableInterface iface = getInterface(addr);
-                if (iface == null)
+                if (iface == null) {
                     iface = createInterface(addr);
-                retVal[0] = iface.createService(svcName, ifServiceId);
+                }
+                return iface.createService(svcName, ifServiceId);
             }
-        };
-        withTreeLock(r);
-        return retVal[0];
+        });
     }
 
     /**

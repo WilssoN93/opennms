@@ -127,7 +127,8 @@ public class PollableNetwork extends PollableContainer {
      * @param addr a {@link java.net.InetAddress} object.
      * @return a {@link org.opennms.netmgt.poller.pollables.PollableInterface} object.
      */
-    public PollableInterface createInterface(int nodeId, String nodeLabel, String nodeLocation, InetAddress addr) {
+    public PollableInterface createInterface(int nodeId, String nodeLabel, String nodeLocation, InetAddress addr)
+            throws LockUnavailable {
         return createNodeIfNecessary(nodeId, nodeLabel, nodeLocation).createInterface(addr);
     }
 
@@ -154,7 +155,8 @@ public class PollableNetwork extends PollableContainer {
      * @param ifServiceId {@code ifservices.id} (must be positive)
      * @return a {@link org.opennms.netmgt.poller.pollables.PollableService} object.
      */
-    public PollableService createService(int nodeId, String nodeLabel, String nodeLocation, InetAddress addr, String svcName, int ifServiceId) {
+    public PollableService createService(int nodeId, String nodeLabel, String nodeLocation, InetAddress addr, String svcName, int ifServiceId)
+            throws LockUnavailable {
         return createNodeIfNecessary(nodeId, nodeLabel, nodeLocation).createService(addr, svcName, ifServiceId);
     }
 

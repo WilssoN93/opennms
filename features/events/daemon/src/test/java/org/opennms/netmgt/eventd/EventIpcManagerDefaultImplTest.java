@@ -818,4 +818,26 @@ public class EventIpcManagerDefaultImplTest {
         // Release
         locker.release();
     }
+
+    @Test
+    public void testListenerQueueMetricsRegistered() {
+        final String listenerName = m_listener.getName();
+        final String sanitized = EventIpcManagerDefaultImpl.sanitizeListenerMetricName(listenerName);
+        m_manager.addEventListener(m_listener, EventConstants.RELOAD_DAEMON_CONFIG_UEI);
+
+        assertTrue(m_registry.getGauges().containsKey(
+                MetricRegistry.name("eventipc.listener", sanitized, "queued")));
+        assertTrue(m_registry.getGauges().containsKey(
+                MetricRegistry.name("eventipc.listener", sanitized, "active")));
+        assertTrue(m_registry.getTimers().containsKey(
+                MetricRegistry.name("eventipc.listener", sanitized, "onEvent")));
+        assertTrue(m_registry.getCounters().containsKey(
+                MetricRegistry.name("eventipc.listener", sanitized, "rejected")));
+
+        m_manager.removeEventListener(m_listener, EventConstants.RELOAD_DAEMON_CONFIG_UEI);
+        m_manager.removeEventListener(m_listener);
+
+        assertThat(m_registry.getGauges().containsKey(
+                MetricRegistry.name("eventipc.listener", sanitized, "queued")), is(false));
+    }
 }

@@ -50,6 +50,7 @@ import org.opennms.netmgt.model.OnmsIpInterface;
 import org.opennms.netmgt.model.OnmsMonitoredService;
 import org.opennms.netmgt.model.OnmsOutage;
 import org.opennms.netmgt.poller.pollables.DbPollEvent;
+import org.opennms.netmgt.poller.pollables.LockUnavailable;
 import org.opennms.netmgt.poller.pollables.PollEvent;
 import org.opennms.netmgt.poller.pollables.PollableInterface;
 import org.opennms.netmgt.poller.pollables.PollableNetwork;
@@ -81,8 +82,8 @@ import com.google.common.annotations.VisibleForTesting;
  */
 public class Poller extends AbstractServiceDaemon {
 
-    /** Max wait for in-memory pollable teardown during unschedule (avoids blocking the event thread indefinitely). */
-    private static final int UNSCHEDULE_DELETE_WAIT_MS = 5000;
+    /** Max wait for in-memory pollable teardown during unschedule (aligned with event tree lock timeout). */
+    private static final int UNSCHEDULE_DELETE_WAIT_MS = 60_000;
 
     private static final int UNSCHEDULE_DELETE_POLL_MS = 20;
 
@@ -810,7 +811,13 @@ public class Poller extends AbstractServiceDaemon {
             final int nodeId,
             final Date closeDate,
             final PollerEventProcessor.Service serviceKey) {
-        service.delete();
+        try {
+            service.delete();
+        } catch (final LockUnavailable e) {
+            LOG.warn("Unable to unschedule pollable service {} on node {} within event tree lock timeout: {}",
+                    serviceKey, nodeId, e.getMessage(), e);
+            return;
+        }
         final long deadlineMs = System.currentTimeMillis() + UNSCHEDULE_DELETE_WAIT_MS;
         while (!service.isDeleted()) {
             if (System.currentTimeMillis() >= deadlineMs) {
@@ -944,7 +951,14 @@ public class Poller extends AbstractServiceDaemon {
                     service.getNodeId(), ipAddr, serviceName, ifServicePk);
             return false;
         }
-        PollableService svc = getNetwork().createService(service.getNodeId(), iface.getNode().getLabel(), iface.getNode().getLocation().getLocationName(), addr, serviceName, ifServicePk);
+        final PollableService svc;
+        try {
+            svc = getNetwork().createService(service.getNodeId(), iface.getNode().getLabel(),
+                    iface.getNode().getLocation().getLocationName(), addr, serviceName, ifServicePk);
+        } catch (final LockUnavailable e) {
+            LOG.warn("Unable to schedule service {}/{}/{}: {}", service.getNodeId(), ipAddr, serviceName, e.getMessage(), e);
+            return false;
+        }
         PollableServiceConfig pollConfig = new PollableServiceConfig(svc, m_pollerConfig, pkg,
                                                                      getScheduler(), m_persisterFactory, m_thresholdingService,
                                                                      m_locationAwarePollerClient, m_pollOutagesDao, serviceMonitorAdaptor);

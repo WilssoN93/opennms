@@ -65,7 +65,7 @@ public class PollableElementStatusChangeTest {
     }
 
     @Test
-    public void schedulingMultipleDownServicesEmitsSingleNodeDown() {
+    public void schedulingMultipleDownServicesEmitsSingleNodeDown() throws LockUnavailable {
         final InetAddress addr = InetAddressUtils.addr("192.168.1.1");
         final PollableNode node = m_network.createNode(1, "node1", null);
         final PollableInterface iface = node.createInterface(addr);
@@ -170,6 +170,11 @@ public class PollableElementStatusChangeTest {
         @Override
         public AsyncPollingEngine getAsyncPollingEngine() {
             return null;
+        }
+
+        @Override
+        public long getEventTreeLockTimeoutMs() {
+            return 60_000L;
         }
     }
 }

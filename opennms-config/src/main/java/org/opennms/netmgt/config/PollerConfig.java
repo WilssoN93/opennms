@@ -352,6 +352,11 @@ public interface PollerConfig extends PathOutageConfig {
     public Package getPackage(String pkgName);
 
     /**
+     * Maximum time in milliseconds for the poller event thread to wait for a per-node tree lock.
+     */
+    int getEventTreeLockTimeoutMs();
+
+    /**
      * <p>getThreads</p>
      *
      * @return a int.

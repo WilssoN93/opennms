@@ -261,6 +261,18 @@ public abstract class PollableElement {
      * @return a T object.
      * @throws LockUnavailable 
      */
+    protected long getEventTreeLockTimeoutMs() {
+        return getContext().getEventTreeLockTimeoutMs();
+    }
+
+    protected void withEventTreeLock(final Runnable r) throws LockUnavailable {
+        withEventTreeLock(Executors.callable(r));
+    }
+
+    protected <T> T withEventTreeLock(final Callable<T> c) throws LockUnavailable {
+        return withTreeLock(c, getEventTreeLockTimeoutMs());
+    }
+
     protected final <T> T withTreeLock(Callable<T> c, long timeout) throws LockUnavailable {
         boolean locked = false;
         try {
@@ -451,7 +463,7 @@ public abstract class PollableElement {
     /**
      * <p>delete</p>
      */
-    public void delete() {
+    public void delete() throws LockUnavailable {
         Runnable r = new Runnable() {
             @Override
             public void run() {
@@ -462,7 +474,7 @@ public abstract class PollableElement {
                 }
             }
         };
-        withTreeLock(r);
+        withEventTreeLock(r);
     }
 
     /**

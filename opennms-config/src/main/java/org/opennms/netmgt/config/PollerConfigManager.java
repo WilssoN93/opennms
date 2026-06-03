@@ -231,6 +231,16 @@ abstract public class PollerConfigManager implements PollerConfig  {
         public void setDefaultCriticalPathRetries(Integer retries) {
             throw new UnsupportedOperationException(MESSAGE);
         }
+
+        @Override
+        public Integer getEventTreeLockTimeout() {
+            return pollerConfigManager.m_config.getEventTreeLockTimeout();
+        }
+
+        @Override
+        public void setEventTreeLockTimeout(final Integer eventTreeLockTimeout) {
+            throw new UnsupportedOperationException(MESSAGE);
+        }
     }
 
 
@@ -240,6 +250,9 @@ abstract public class PollerConfigManager implements PollerConfig  {
      * allocation in {@link #isInterfaceInPackage(String, Package)}.
      */
     private static final ByteArrayComparator BYTE_ARRAY_COMPARATOR = new ByteArrayComparator();
+
+    private static final int DEFAULT_EVENT_TREE_LOCK_TIMEOUT_MS = 60_000;
+    private static final int MIN_EVENT_TREE_LOCK_TIMEOUT_MS = 10_000;
     private final ReadWriteLock m_globalLock = new ReentrantReadWriteLock();
     private final Lock m_readLock = m_globalLock.readLock();
     private final Lock m_writeLock = m_globalLock.writeLock();
@@ -511,6 +524,17 @@ abstract public class PollerConfigManager implements PollerConfig  {
         try {
             getReadLock().lock();
             return m_config.getDefaultCriticalPathIp();
+        } finally {
+            getReadLock().unlock();
+        }
+    }
+
+    @Override
+    public int getEventTreeLockTimeoutMs() {
+        try {
+            getReadLock().lock();
+            final int configured = m_config.getEventTreeLockTimeout();
+            return Math.max(MIN_EVENT_TREE_LOCK_TIMEOUT_MS, configured);
         } finally {
             getReadLock().unlock();
         }

@@ -601,6 +601,11 @@ public class MockPollerConfig extends OverrideablePollOutagesDaoImpl implements 
     }
 
     @Override
+    public int getEventTreeLockTimeoutMs() {
+        return 60_000;
+    }
+
+    @Override
     public List<InetAddress> getIpList(final Package pkg) {
         return Collections.emptyList();
     }

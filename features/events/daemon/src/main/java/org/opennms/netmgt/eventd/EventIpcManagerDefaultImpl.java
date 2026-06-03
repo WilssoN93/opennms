@@ -55,8 +55,10 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
+import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Timer;
 
 /**
  * An implementation of the EventIpcManager interface that can be used to
@@ -69,6 +71,16 @@ public class EventIpcManagerDefaultImpl implements EventIpcManager, EventIpcBroa
     
     
     private static final Logger LOG = LoggerFactory.getLogger(EventIpcManagerDefaultImpl.class);
+
+    private static final String METRIC_PREFIX = "eventipc.listener";
+
+    static String sanitizeListenerMetricName(final String listenerName) {
+        return listenerName.replace(':', '_');
+    }
+
+    static String listenerMetricName(final String listenerName, final String suffix) {
+        return MetricRegistry.name(METRIC_PREFIX, sanitizeListenerMetricName(listenerName), suffix);
+    }
 
     public static class DiscardTrapsAndSyslogEvents implements RejectedExecutionHandler {
         /**
@@ -134,20 +146,29 @@ public class EventIpcManagerDefaultImpl implements EventIpcManager, EventIpcBroa
         private final EventListener m_listener;
 
         /**
-         * The thread that is running this runnable.
+         * The thread pool executing listener events.
          */
-        private final ExecutorService m_delegateThread;
+        private final ThreadPoolExecutor m_delegateThread;
+
+        private final Timer m_onEventTimer;
+
+        private final Counter m_rejectedCounter;
 
         /**
          * Constructor
          */
-        EventListenerExecutor(EventListener listener, Integer handlerQueueLength) {
+        EventListenerExecutor(final EventListener listener, final Integer handlerQueueLength,
+                final MetricRegistry registry) {
             m_listener = listener;
 
             int numThreads = 1;
             if (m_listener instanceof ThreadAwareEventListener) {
                 numThreads = ((ThreadAwareEventListener)m_listener).getNumThreads();
             }
+
+            final String listenerName = m_listener.getName();
+            m_rejectedCounter = registry.counter(listenerMetricName(listenerName, "rejected"));
+            m_onEventTimer = registry.timer(listenerMetricName(listenerName, "onEvent"));
 
             m_delegateThread = new ThreadPoolExecutor(
                     numThreads,
@@ -163,17 +184,22 @@ public class EventIpcManagerDefaultImpl implements EventIpcManager, EventIpcBroa
                     new RejectedExecutionHandler() {
                         @Override
                         public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+                            m_rejectedCounter.inc();
                             LOG.warn("Listener {}'s event queue is full, discarding event", m_listener.getName());
                         }
                     }
             );
+
+            final ThreadPoolExecutor executor = m_delegateThread;
+            registry.register(listenerMetricName(listenerName, "queued"), (Gauge<Integer>) () -> executor.getQueue().size());
+            registry.register(listenerMetricName(listenerName, "active"), (Gauge<Integer>) executor::getActiveCount);
         }
 
         public CompletableFuture<Void> addEvent(final IEvent event) {
             return CompletableFuture.runAsync(new Runnable() {
                 @Override
                 public void run() {
-                    try {
+                    try (Timer.Context ignored = m_onEventTimer.time()) {
                          if (LOG.isDebugEnabled()) LOG.debug("run: calling onEvent on {} for event {}", m_listener.getName(), event.toStringSimple());
 
                         // Make sure we restore our log4j logging prefix after onEvent is called
@@ -195,6 +221,14 @@ public class EventIpcManagerDefaultImpl implements EventIpcManager, EventIpcBroa
          */
         public void stop() {
             m_delegateThread.shutdown();
+        }
+
+        void unregisterMetrics(final MetricRegistry registry) {
+            final String listenerName = m_listener.getName();
+            registry.remove(listenerMetricName(listenerName, "queued"));
+            registry.remove(listenerMetricName(listenerName, "active"));
+            registry.remove(listenerMetricName(listenerName, "onEvent"));
+            registry.remove(listenerMetricName(listenerName, "rejected"));
         }
     }
 
@@ -474,7 +508,9 @@ public class EventIpcManagerDefaultImpl implements EventIpcManager, EventIpcBroa
 
         // stop and remove the listener thread for this listener
         if (m_listenerThreads.containsKey(listener.getName())) {
-            m_listenerThreads.get(listener.getName()).stop();
+            final EventListenerExecutor executor = m_listenerThreads.get(listener.getName());
+            executor.stop();
+            executor.unregisterMetrics(m_registry);
 
             m_listenerThreads.remove(listener.getName());
         }
@@ -489,7 +525,7 @@ public class EventIpcManagerDefaultImpl implements EventIpcManager, EventIpcBroa
             return;
         }
         
-        EventListenerExecutor listenerThread = new EventListenerExecutor(listener, m_handlerQueueLength);
+        EventListenerExecutor listenerThread = new EventListenerExecutor(listener, m_handlerQueueLength, m_registry);
         m_listenerThreads.put(listener.getName(), listenerThread);
     }
 
