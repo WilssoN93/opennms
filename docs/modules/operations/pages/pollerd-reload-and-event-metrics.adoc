@@ -31,4 +31,94 @@ Eventd exposes per-listener metrics in JMX domain `org.opennms.netmgt.eventd`:
 
 For Pollerd, the listener name is `Poller:PollerEventProcessor` (sanitized in metric names as `Poller_PollerEventProcessor`).
 
-A high `onEvent` duration with a low queue depth often means the handler is stuck inside one event (for example a long reconcile), not that the queue is backing up.
+When exported via the JMX Prometheus agent (`jmx_exporter.yml`), metrics use fixed names with a `listener` label:
+
+* `org_opennms_netmgt_eventd_eventipc_listener_queued{listener="..."}`
+* `org_opennms_netmgt_eventd_eventipc_listener_active{listener="..."}`
+* `org_opennms_netmgt_eventd_eventipc_listener_onevent_max{listener="..."}`
+* `org_opennms_netmgt_eventd_eventipc_listener_onevent_mean{listener="..."}`
+* `org_opennms_netmgt_eventd_eventipc_listener_onevent_count{listener="..."}`
+* `org_opennms_netmgt_eventd_eventipc_listener_rejected{listener="..."}`
+
+Listener names may contain dots (for example `OpenNMS.Poller.DefaultPollContext` or `Poller_PollerEventProcessor`).
+
+Example PromQL: `org_opennms_netmgt_eventd_eventipc_listener_onevent_count{listener=~".*Poller.*"}`
+
+A high `onevent_max` with a low `queued` value often means the handler is stuck inside one event (for example a long reload), not that the queue is backing up.
+
+== Category membership debounce
+
+`nodeCategoryMembershipChanged` events can arrive in bursts (for example from Provisiond). Handling each event synchronously on the Poller event thread runs an expensive package IP map rebuild per event and deep package sync per node, which backs up `eventipc.listener.Poller_PollerEventProcessor.queued`.
+
+Optional attributes on the root `poller-configuration` element:
+
+* `categoryMembershipDebounceMs` (default `5000`) — quiet period before a batched flush; set to `0` to restore legacy per-event handling
+* `categoryMembershipDebounceMaxWaitMs` (default `30000`) — force a flush after this many milliseconds even if events keep arriving (effective value is at least `categoryMembershipDebounceMs`)
+
+When debouncing is enabled, the event listener enqueues work and returns immediately. A background thread flushes pending nodes: one filter cache flush, one `rebuildPackageIpListMap()`, then per-node package sync.
+
+Example:
+
+[source,xml]
+----
+<poller-configuration
+    ...
+    categoryMembershipDebounceMs="5000"
+    categoryMembershipDebounceMaxWaitMs="30000"
+    ...>
+----
+
+== Poll lock scope during remote polls
+
+Administrative handlers (`serviceDeleted`, `interfaceDeleted`, category unschedule) need a short exclusive lock on the per-node pollable tree. Synchronous poll workers previously held that lock for the entire remote minion RPC (`asyncPoll().get()`), which blocked deletes for up to `eventTreeLockTimeout`.
+
+Poll workers now:
+
+* Acquire the tree lock briefly to prepare
+* Run the remote poll **without** the tree lock
+* Re-acquire the lock briefly to apply results (discarded if the service was deleted meanwhile)
+
+Poll workers still use a 500 ms lock wait and postpone when the lock is busy for the short critical sections.
+
+== Investigating Poller event queue backlog
+
+| Metric | Meaning |
+|--------|---------|
+| `org_opennms_netmgt_eventd_eventipc_listener_queued{listener="Poller_PollerEventProcessor"}` | In-memory backlog for Pollerd's single event thread |
+| `..._active` | Should be `1` while one `onEvent` runs |
+| `rate(..._onevent_count[1h])` | Completed handlers per second (~27/hour ≈ steady drain) |
+
+Rough drain time: `queued ÷ rate(onevent_count[1h])` (for example 323 queued at 27/hour ≈ 12 hours if no new events).
+
+PostgreSQL supply (last 24 hours) for Poller-subscribed UEIs:
+
+[source,sql]
+----
+SELECT eventuei, COUNT(*) AS cnt
+FROM events
+WHERE eventtime > NOW() - INTERVAL '24 hours'
+  AND eventuei IN (
+    'uei.opennms.org/nodes/nodeCategoryMembershipChanged',
+    'uei.opennms.org/nodes/nodeGainedService',
+    'uei.opennms.org/nodes/serviceDeleted',
+    'uei.opennms.org/nodes/interfaceDeleted',
+    'uei.opennms.org/nodes/nodeDeleted',
+    'uei.opennms.org/nodes/interfaceReparented',
+    'uei.opennms.org/nodes/assetInfoChanged',
+    'uei.opennms.org/nodes/nodeLocationChanged',
+    'uei.opennms.org/internal/reloadDaemonConfig',
+    'uei.opennms.org/internal/scheduledOutagesChanged'
+  )
+GROUP BY eventuei
+ORDER BY cnt DESC;
+----
+
+When `queued` is high, capture a thread dump and inspect `Poller:PollerEventProcessor` — `obtainTreeLock` while in `interfaceDeletedHandler`, `serviceDeletedHandler`, or category sync indicates lock contention with in-flight polls.
+
+PromQL examples:
+
+[source]
+----
+org_opennms_netmgt_eventd_eventipc_listener_queued{listener="Poller_PollerEventProcessor"}
+rate(org_opennms_netmgt_eventd_eventipc_listener_onevent_count{listener="Poller_PollerEventProcessor"}[1h])
+----

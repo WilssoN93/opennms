@@ -55,10 +55,12 @@ import org.slf4j.LoggerFactory;
  * @author <a href="mailto:weave@oculan.com">Brian Weaver </a>
  * @author <a href="http://www.opennms.org/">OpenNMS </a>
  */
-final class PollerEventProcessor implements EventListener {
+final class PollerEventProcessor implements EventListener, CategoryMembershipDebouncer.FlushHandler {
     private static final Logger LOG = LoggerFactory.getLogger(PollerEventProcessor.class);
 
     private final Poller m_poller;
+
+    private final CategoryMembershipDebouncer m_categoryMembershipDebouncer;
 
     /**
      * Create message selector to set to the subscription
@@ -523,6 +525,7 @@ final class PollerEventProcessor implements EventListener {
     PollerEventProcessor(Poller poller) {
 
         m_poller = poller;
+        m_categoryMembershipDebouncer = new CategoryMembershipDebouncer(this);
 
         createMessageSelectorAndSubscribe();
 
@@ -533,6 +536,7 @@ final class PollerEventProcessor implements EventListener {
      * Unsubscribe from eventd
      */
     public void close() {
+        m_categoryMembershipDebouncer.close();
         getEventManager().removeEventListener(this);
     }
 
@@ -645,11 +649,29 @@ final class PollerEventProcessor implements EventListener {
      * rescheduleExisting=true, which would tear down and recreate all pollables on the node.
      */
     private void handleNodeCategoryMembershipChanged(final IEvent event) {
-        LOG.warn("Processing nodeCategoryMembershipChanged for node {} (eventId={}).",
-                event.getNodeid(), event.getDbid());
+        if (getPollerConfig().getCategoryMembershipDebounceMs() <= 0) {
+            LOG.warn("Processing nodeCategoryMembershipChanged for node {} (eventId={}).",
+                    event.getNodeid(), event.getDbid());
+            FilterDaoFactory.getInstance().flushActiveIpAddressListCache();
+            getPollerConfig().rebuildPackageIpListMap();
+            syncNodeServicesAfterCategoryChange(event);
+            return;
+        }
+        m_categoryMembershipDebouncer.enqueue(event);
+    }
+
+    @Override
+    public void flushCategoryMembershipBatch(final java.util.Map<Long, IEvent> eventsByNodeId) {
         FilterDaoFactory.getInstance().flushActiveIpAddressListCache();
         getPollerConfig().rebuildPackageIpListMap();
-        syncNodeServicesAfterCategoryChange(event);
+        for (final IEvent event : eventsByNodeId.values()) {
+            syncNodeServicesAfterCategoryChange(event);
+        }
+    }
+
+    @Override
+    public PollerConfig getPollerConfigForDebouncer() {
+        return getPollerConfig();
     }
 
     private void syncNodeServicesAfterCategoryChange(final IEvent event) {

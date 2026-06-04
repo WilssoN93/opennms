@@ -271,15 +271,40 @@ public class PollableNode extends PollableContainer {
     /** {@inheritDoc} */
     @Override
     public PollStatus doPoll(final PollableElement elem) {
-        final PollStatus[] retVal = new PollStatus[1];
-        Runnable r = new Runnable() {
-            @Override
-            public void run() {
+        if (!(elem instanceof PollableService)) {
+            final PollStatus[] retVal = new PollStatus[1];
+            withTreeLock(() -> {
                 resetStatusChanged();
-                retVal[0] =  poll(elem);
+                retVal[0] = poll(elem);
+            });
+            return retVal[0];
+        }
+
+        final PollableService svc = (PollableService) elem;
+        final boolean[] skipPoll = new boolean[1];
+        withTreeLock(() -> {
+            if (svc.isDeleted()) {
+                skipPoll[0] = true;
+                return;
             }
-        };
-        withTreeLock(r);
+            resetStatusChanged();
+        });
+        if (skipPoll[0]) {
+            return getStatus();
+        }
+
+        final PollStatus polledStatus = svc.invokeRemotePollOutsideTreeLock();
+
+        final PollStatus[] retVal = new PollStatus[1];
+        withTreeLock(() -> {
+            if (svc.isDeleted()) {
+                retVal[0] = getStatus();
+                return;
+            }
+            svc.applyPolledStatusUnderTreeLock(polledStatus);
+            svc.getNode().processStatusChange(new Date());
+            retVal[0] = svc.getStatus();
+        });
         return retVal[0];
     }
 

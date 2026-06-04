@@ -606,6 +606,16 @@ public class MockPollerConfig extends OverrideablePollOutagesDaoImpl implements 
     }
 
     @Override
+    public int getCategoryMembershipDebounceMs() {
+        return 0;
+    }
+
+    @Override
+    public int getCategoryMembershipDebounceMaxWaitMs() {
+        return 30_000;
+    }
+
+    @Override
     public List<InetAddress> getIpList(final Package pkg) {
         return Collections.emptyList();
     }

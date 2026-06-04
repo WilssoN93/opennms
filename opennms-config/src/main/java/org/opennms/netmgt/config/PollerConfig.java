@@ -357,6 +357,16 @@ public interface PollerConfig extends PathOutageConfig {
     int getEventTreeLockTimeoutMs();
 
     /**
+     * Quiet period before flushing batched category membership changes. Zero disables debouncing.
+     */
+    int getCategoryMembershipDebounceMs();
+
+    /**
+     * Maximum time the oldest pending category membership change may wait before flush.
+     */
+    int getCategoryMembershipDebounceMaxWaitMs();
+
+    /**
      * <p>getThreads</p>
      *
      * @return a int.

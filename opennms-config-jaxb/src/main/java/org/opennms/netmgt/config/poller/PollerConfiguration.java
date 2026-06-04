@@ -102,6 +102,12 @@ public class PollerConfiguration implements Serializable {
     @XmlAttribute(name="eventTreeLockTimeout")
     private Integer m_eventTreeLockTimeout;
 
+    @XmlAttribute(name="categoryMembershipDebounceMs")
+    private Integer m_categoryMembershipDebounceMs;
+
+    @XmlAttribute(name="categoryMembershipDebounceMaxWaitMs")
+    private Integer m_categoryMembershipDebounceMaxWaitMs;
+
     /**
      * Configuration of node-outage functionality
      */
@@ -307,6 +313,22 @@ public class PollerConfiguration implements Serializable {
 
     public void setEventTreeLockTimeout(final Integer eventTreeLockTimeout) {
         m_eventTreeLockTimeout = eventTreeLockTimeout;
+    }
+
+    public Integer getCategoryMembershipDebounceMs() {
+        return m_categoryMembershipDebounceMs == null ? 5000 : m_categoryMembershipDebounceMs;
+    }
+
+    public void setCategoryMembershipDebounceMs(final Integer categoryMembershipDebounceMs) {
+        m_categoryMembershipDebounceMs = categoryMembershipDebounceMs;
+    }
+
+    public Integer getCategoryMembershipDebounceMaxWaitMs() {
+        return m_categoryMembershipDebounceMaxWaitMs == null ? 30000 : m_categoryMembershipDebounceMaxWaitMs;
+    }
+
+    public void setCategoryMembershipDebounceMaxWaitMs(final Integer categoryMembershipDebounceMaxWaitMs) {
+        m_categoryMembershipDebounceMaxWaitMs = categoryMembershipDebounceMaxWaitMs;
     }
 
     @Override

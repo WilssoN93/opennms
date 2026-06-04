@@ -241,6 +241,26 @@ abstract public class PollerConfigManager implements PollerConfig  {
         public void setEventTreeLockTimeout(final Integer eventTreeLockTimeout) {
             throw new UnsupportedOperationException(MESSAGE);
         }
+
+        @Override
+        public Integer getCategoryMembershipDebounceMs() {
+            return pollerConfigManager.m_config.getCategoryMembershipDebounceMs();
+        }
+
+        @Override
+        public void setCategoryMembershipDebounceMs(final Integer categoryMembershipDebounceMs) {
+            throw new UnsupportedOperationException(MESSAGE);
+        }
+
+        @Override
+        public Integer getCategoryMembershipDebounceMaxWaitMs() {
+            return pollerConfigManager.m_config.getCategoryMembershipDebounceMaxWaitMs();
+        }
+
+        @Override
+        public void setCategoryMembershipDebounceMaxWaitMs(final Integer categoryMembershipDebounceMaxWaitMs) {
+            throw new UnsupportedOperationException(MESSAGE);
+        }
     }
 
 
@@ -253,6 +273,8 @@ abstract public class PollerConfigManager implements PollerConfig  {
 
     private static final int DEFAULT_EVENT_TREE_LOCK_TIMEOUT_MS = 60_000;
     private static final int MIN_EVENT_TREE_LOCK_TIMEOUT_MS = 10_000;
+    private static final int DEFAULT_CATEGORY_MEMBERSHIP_DEBOUNCE_MS = 5_000;
+    private static final int DEFAULT_CATEGORY_MEMBERSHIP_DEBOUNCE_MAX_WAIT_MS = 30_000;
     private final ReadWriteLock m_globalLock = new ReentrantReadWriteLock();
     private final Lock m_readLock = m_globalLock.readLock();
     private final Lock m_writeLock = m_globalLock.writeLock();
@@ -535,6 +557,30 @@ abstract public class PollerConfigManager implements PollerConfig  {
             getReadLock().lock();
             final int configured = m_config.getEventTreeLockTimeout();
             return Math.max(MIN_EVENT_TREE_LOCK_TIMEOUT_MS, configured);
+        } finally {
+            getReadLock().unlock();
+        }
+    }
+
+    @Override
+    public int getCategoryMembershipDebounceMs() {
+        try {
+            getReadLock().lock();
+            final Integer configured = m_config.getCategoryMembershipDebounceMs();
+            return configured == null ? DEFAULT_CATEGORY_MEMBERSHIP_DEBOUNCE_MS : Math.max(0, configured);
+        } finally {
+            getReadLock().unlock();
+        }
+    }
+
+    @Override
+    public int getCategoryMembershipDebounceMaxWaitMs() {
+        try {
+            getReadLock().lock();
+            final Integer configured = m_config.getCategoryMembershipDebounceMaxWaitMs();
+            final int maxWait = configured == null ? DEFAULT_CATEGORY_MEMBERSHIP_DEBOUNCE_MAX_WAIT_MS
+                    : Math.max(0, configured);
+            return Math.max(maxWait, getCategoryMembershipDebounceMs());
         } finally {
             getReadLock().unlock();
         }

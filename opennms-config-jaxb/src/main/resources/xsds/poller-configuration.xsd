@@ -127,6 +127,28 @@
           </restriction>
         </simpleType>
       </attribute>
+
+      <attribute default="5000" name="categoryMembershipDebounceMs" use="optional">
+        <annotation>
+          <documentation>Quiet period in milliseconds before flushing batched nodeCategoryMembershipChanged handling. Set to 0 to disable debouncing (legacy per-event behavior).</documentation>
+        </annotation>
+        <simpleType>
+          <restriction base="int">
+            <minInclusive value="0" />
+          </restriction>
+        </simpleType>
+      </attribute>
+
+      <attribute default="30000" name="categoryMembershipDebounceMaxWaitMs" use="optional">
+        <annotation>
+          <documentation>Maximum time in milliseconds the oldest pending category membership change may wait before a flush is forced. Effective value is at least categoryMembershipDebounceMs.</documentation>
+        </annotation>
+        <simpleType>
+          <restriction base="int">
+            <minInclusive value="0" />
+          </restriction>
+        </simpleType>
+      </attribute>
     </complexType>
   </element>
 

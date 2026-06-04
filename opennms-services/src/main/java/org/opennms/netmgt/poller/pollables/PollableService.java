@@ -46,19 +46,9 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
     
     private static final Logger LOG = LoggerFactory.getLogger(PollableService.class);
 
-    private final class PollRunner implements Runnable {
-    	
-    	private volatile PollStatus m_pollStatus;
-            @Override
-		public void run() {
-		    doPoll();
-		    getNode().processStatusChange(new Date());
-		    m_pollStatus = getStatus();
-		}
-		public PollStatus getPollStatus() {
-			return m_pollStatus;
-		}
-	}
+    private static final class DeletedPollAborted extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+    }
 
 	private final String m_svcName;
 
@@ -410,14 +400,21 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
     }
 
     public void doRunWithPreemptivePollStatus(PollStatus pollStatus) {
-        withTreeLock(() -> {
-            m_preemptivePollStatus = pollStatus;
-            PollRunner r = new PollRunner();
-            r.run();
-            // Track the result of the poll, do this here since we short circuit PollableServiceConfig::poll
-            getContext().trackPoll(this, pollStatus);
-            m_preemptivePollStatus = null;
-        });
+        try {
+            withTreeLock(() -> {
+                if (isDeleted()) {
+                    return;
+                }
+                m_preemptivePollStatus = pollStatus;
+                poll();
+                getNode().processStatusChange(new Date());
+                getContext().trackPoll(this, pollStatus);
+                m_preemptivePollStatus = null;
+            }, 500);
+        } catch (final LockUnavailable e) {
+            LOG.trace("Postponing preemptive poll for {}. Another service is currently holding the lock.", this);
+            throw new PostponeNecessary("LockUnavailable postpone poll");
+        }
     }
 
     private PollStatus doRun(int timeout) {
@@ -429,16 +426,9 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
             Logging.putThreadContext("nodeLabel", getNodeLabel());
             long startDate = System.currentTimeMillis();
             LOG.debug("Start Scheduled Poll of service {}", this);
-            PollStatus status;
+            final PollStatus status;
             if (getContext().isNodeProcessingEnabled()) {
-                PollRunner r = new PollRunner();
-                try {
-                    withTreeLock(r, timeout);
-                } catch (LockUnavailable e) {
-                    LOG.trace("Postponing poll for {}. Another service is currently holding the lock.", this);
-                    throw new PostponeNecessary("LockUnavailable postpone poll");
-                }
-                status = r.getPollStatus();
+                status = doRunWithNodeProcessing(timeout);
             }
             else {
                 doPoll();
@@ -452,6 +442,67 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
         }
     }
 
+    private PollStatus doRunWithNodeProcessing(final int timeout) {
+        try {
+            withTreeLock(() -> {
+                if (isDeleted()) {
+                    throw new DeletedPollAborted();
+                }
+                getNode().resetStatusChanged();
+            }, timeout);
+        } catch (final DeletedPollAborted e) {
+            return getStatus();
+        } catch (final LockUnavailable e) {
+            LOG.trace("Postponing poll for {}. Another service is currently holding the lock.", this);
+            throw new PostponeNecessary("LockUnavailable postpone poll");
+        }
+
+        final PollStatus polledStatus = invokeRemotePoll();
+
+        final PollStatus[] result = new PollStatus[1];
+        try {
+            withTreeLock(() -> {
+                if (isDeleted()) {
+                    LOG.debug("Discarding poll result for deleted service {}", this);
+                    result[0] = getStatus();
+                    return;
+                }
+                applyPolledStatus(polledStatus);
+                getNode().processStatusChange(new Date());
+                result[0] = getStatus();
+            }, timeout);
+        } catch (final LockUnavailable e) {
+            LOG.trace("Postponing poll for {}. Unable to apply poll result under tree lock.", this);
+            throw new PostponeNecessary("LockUnavailable postpone poll");
+        }
+        return result[0];
+    }
+
+    PollStatus invokeRemotePollOutsideTreeLock() {
+        return invokeRemotePoll();
+    }
+
+    void applyPolledStatusUnderTreeLock(final PollStatus polledStatus) {
+        applyPolledStatus(polledStatus);
+    }
+
+    private PollStatus invokeRemotePoll() {
+        if (m_preemptivePollStatus != null) {
+            return m_preemptivePollStatus;
+        }
+        try {
+            return m_pollConfig.poll();
+        } catch (final Throwable t) {
+            return PollableServiceConfig.errorToPollStatus(this, t);
+        }
+    }
+
+    private void applyPolledStatus(final PollStatus polledStatus) {
+        if (!polledStatus.isUnknown()) {
+            updateStatus(polledStatus);
+        }
+    }
+
 	/**
      * <p>delete</p>
      */
@@ -461,7 +512,9 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
             @Override
             public Void call() throws Exception {
                 PollableService.super.delete();
-                m_schedule.unschedule();
+                if (m_schedule != null) {
+                    m_schedule.unschedule();
+                }
                 return null;
             }
         });
