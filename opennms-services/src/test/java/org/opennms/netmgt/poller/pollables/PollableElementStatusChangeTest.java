@@ -22,6 +22,8 @@
 package org.opennms.netmgt.poller.pollables;
 
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.net.InetAddress;
 import java.util.Date;
@@ -33,6 +35,8 @@ import org.opennms.core.utils.InetAddressUtils;
 import org.opennms.netmgt.events.api.EventConstants;
 import org.opennms.netmgt.poller.AsyncPollingEngine;
 import org.opennms.netmgt.poller.PollStatus;
+import org.opennms.netmgt.scheduler.Schedule;
+import org.opennms.netmgt.scheduler.ScheduleInterval;
 import org.opennms.netmgt.xml.event.Event;
 
 /**
@@ -79,6 +83,28 @@ public class PollableElementStatusChangeTest {
             node.recalculateStatus();
             node.processStatusChange(new Date());
         }
+
+        assertEquals(1, m_context.getSentCount(EventConstants.NODE_DOWN_EVENT_UEI));
+    }
+
+    @Test
+    public void servicePollGoingDownEmitsNodeDown() throws LockUnavailable {
+        final InetAddress addr = InetAddressUtils.addr("192.168.1.1");
+        final PollableNode node = m_network.createNode(1, "node1", null);
+        final PollableInterface iface = node.createInterface(addr);
+        final PollableService svc = iface.createService("ICMP", 1);
+
+        final PollableServiceConfig pollConfig = mock(PollableServiceConfig.class);
+        when(pollConfig.getCurrentTime()).thenReturn(0L);
+        when(pollConfig.poll()).thenReturn(PollStatus.down());
+        svc.setPollConfig(pollConfig);
+        final Schedule schedule = mock(Schedule.class);
+        final ScheduleInterval interval = mock(ScheduleInterval.class);
+        when(schedule.getInterval()).thenReturn(interval);
+        when(interval.scheduledSuspension()).thenReturn(false);
+        svc.setSchedule(schedule);
+
+        svc.doPoll();
 
         assertEquals(1, m_context.getSentCount(EventConstants.NODE_DOWN_EVENT_UEI));
     }

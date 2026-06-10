@@ -328,6 +328,21 @@ abstract public class PollableContainer extends PollableElement {
     }
 
 
+    /**
+     * Updates this container and ancestors when a descendant's polled status changes,
+     * mirroring the post-poll logic in {@link #poll(PollableElement)}.
+     */
+    void propagateMemberStatusChange(final PollableElement polledElem) {
+        PollableElement member = findMemberWithDescendent(polledElem);
+        if (member.getStatus().isUp() != getStatus().isUp() && member.isStatusChanged()) {
+            updateStatus(pollRemainingMembers(member));
+        }
+        final PollableElement parent = getParent();
+        if (parent instanceof PollableContainer) {
+            ((PollableContainer) parent).propagateMemberStatusChange(polledElem);
+        }
+    }
+
     /** {@inheritDoc} */
     @Override
     protected PollStatus poll(final PollableElement elem) {
@@ -337,9 +352,7 @@ abstract public class PollableContainer extends PollableElement {
             public void run() {
                 PollableElement member = findMemberWithDescendent(elem);
                 PollStatus memberStatus = member.poll(elem);
-                if (memberStatus.isUp() != getStatus().isUp() && member.isStatusChanged()) {
-                    updateStatus(pollRemainingMembers(member));
-                }
+                propagateMemberStatusChange(elem);
                 retVal[0] = getStatus();
             }
         };

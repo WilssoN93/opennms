@@ -407,6 +407,7 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
                 }
                 m_preemptivePollStatus = pollStatus;
                 poll();
+                propagateMemberStatusChangeToAncestors();
                 getNode().processStatusChange(new Date());
                 getContext().trackPoll(this, pollStatus);
                 m_preemptivePollStatus = null;
@@ -467,7 +468,7 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
                     result[0] = getStatus();
                     return;
                 }
-                applyPolledStatus(polledStatus);
+                applyPolledStatusUnderTreeLock(polledStatus);
                 getNode().processStatusChange(new Date());
                 result[0] = getStatus();
             }, timeout);
@@ -484,6 +485,14 @@ public class PollableService extends PollableElement implements ReadyRunnable, M
 
     void applyPolledStatusUnderTreeLock(final PollStatus polledStatus) {
         applyPolledStatus(polledStatus);
+        propagateMemberStatusChangeToAncestors();
+    }
+
+    private void propagateMemberStatusChangeToAncestors() {
+        final PollableElement parent = getParent();
+        if (parent instanceof PollableContainer) {
+            ((PollableContainer) parent).propagateMemberStatusChange(this);
+        }
     }
 
     private PollStatus invokeRemotePoll() {
