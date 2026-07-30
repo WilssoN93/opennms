@@ -202,6 +202,16 @@ public abstract class EventConstants {
     public static final String NODE_UP_EVENT_UEI = "uei.opennms.org/nodes/nodeUp";
 
     /**
+     * Resolution UEI when the poller intentionally stops monitoring a service (clears nodeLostService).
+     */
+    public static final String SERVICE_MONITORING_STOPPED_EVENT_UEI = "uei.opennms.org/nodes/serviceMonitoringStopped";
+
+    /**
+     * Resolution UEI when the poller intentionally stops monitoring all local-package services on a node (clears nodeDown).
+     */
+    public static final String NODE_MONITORING_STOPPED_EVENT_UEI = "uei.opennms.org/nodes/nodeMonitoringStopped";
+
+    /**
      * The interface up event UEI.
      */
     public static final String INTERFACE_UP_EVENT_UEI = "uei.opennms.org/nodes/interfaceUp";

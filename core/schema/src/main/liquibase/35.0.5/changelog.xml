@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-2.0.xsd">
+
+    <!-- Additive pollerd resolution events — not applied by bulk eventconf_events.sql seed on upgrades (that runs only when eventconf_events is empty). -->
+    <changeSet author="opennms" id="35.0.5-add-event-service-monitoring-stopped">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="eventconf_events"/>
+                <tableExists tableName="eventconf_sources"/>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM eventconf_sources WHERE name = 'opennms.pollerd.events'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM eventconf_events
+                    WHERE uei = 'uei.opennms.org/nodes/serviceMonitoringStopped'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <comment>Add resolution event that clears nodeLostService when the poller stops monitoring a service.</comment>
+        <sql>
+            <![CDATA[
+INSERT INTO eventconf_events(id, source_id, uei, event_label, description, enabled, xml_content,
+    created_time, last_modified, modified_by)
+SELECT m.mx + 1, ps.id, 'uei.opennms.org/nodes/serviceMonitoringStopped',
+    'OpenNMS-defined node event: serviceMonitoringStopped',
+    'Polling stopped for %service% on %interface% (no longer in a poller package); clearing its outage alarm.',
+    TRUE,
+    '<event xmlns="http://xmlns.opennms.org/xsd/eventconf">
+   <uei>uei.opennms.org/nodes/serviceMonitoringStopped</uei>
+   <event-label>OpenNMS-defined node event: serviceMonitoringStopped</event-label>
+   <descr>Polling stopped for %service% on %interface% (no longer in a poller package); clearing its outage alarm.</descr>
+   <logmsg dest="logonly">Monitoring stopped for %service% on %interface%; clearing nodeLostService alarm.</logmsg>
+   <severity>Normal</severity>
+   <alarm-data reduction-key="%uei%:%dpname%:%nodeid%:%interface%:%service%" alarm-type="2" clear-key="uei.opennms.org/nodes/nodeLostService:%dpname%:%nodeid%:%interface%:%service%" auto-clean="false"/>
+</event>',
+    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system-migration'
+FROM (SELECT COALESCE(MAX(id), 0) AS mx FROM eventconf_events) AS m,
+     eventconf_sources ps
+WHERE ps.name = 'opennms.pollerd.events'
+LIMIT 1;
+            ]]>
+        </sql>
+        <sql>
+            UPDATE eventconf_events
+            SET severity = (
+            xpath('//ns:severity/text()', xml_content::xml, ARRAY[
+            ['ns', 'http://xmlns.opennms.org/xsd/eventconf']
+            ])::text[]
+            )[1]
+            WHERE uei = 'uei.opennms.org/nodes/serviceMonitoringStopped';
+        </sql>
+        <sql>
+            SELECT setval('eventconf_events_id_seq', (SELECT COALESCE(MAX(id), 1) FROM eventconf_events));
+        </sql>
+    </changeSet>
+
+    <changeSet author="opennms" id="35.0.5-add-event-node-monitoring-stopped">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="eventconf_events"/>
+                <tableExists tableName="eventconf_sources"/>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM eventconf_sources WHERE name = 'opennms.pollerd.events'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM eventconf_events
+                    WHERE uei = 'uei.opennms.org/nodes/nodeMonitoringStopped'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <comment>Add resolution event that clears nodeDown when the poller stops monitoring all local-package services on a node.</comment>
+        <sql>
+            <![CDATA[
+INSERT INTO eventconf_events(id, source_id, uei, event_label, description, enabled, xml_content,
+    created_time, last_modified, modified_by)
+SELECT m.mx + 1, ps.id, 'uei.opennms.org/nodes/nodeMonitoringStopped',
+    'OpenNMS-defined node event: nodeMonitoringStopped',
+    'All monitored services on node %nodeid% stopped (no longer in a poller package); clearing nodeDown.',
+    TRUE,
+    '<event xmlns="http://xmlns.opennms.org/xsd/eventconf">
+   <uei>uei.opennms.org/nodes/nodeMonitoringStopped</uei>
+   <event-label>OpenNMS-defined node event: nodeMonitoringStopped</event-label>
+   <descr>All monitored services on node %nodeid% stopped (no longer in a poller package); clearing nodeDown.</descr>
+   <logmsg dest="logonly">Monitoring stopped for node %nodeid%; clearing nodeDown alarm.</logmsg>
+   <severity>Normal</severity>
+   <alarm-data reduction-key="%uei%:%dpname%:%nodeid%" alarm-type="2" clear-key="uei.opennms.org/nodes/nodeDown:%dpname%:%nodeid%" auto-clean="false"/>
+</event>',
+    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system-migration'
+FROM (SELECT COALESCE(MAX(id), 0) AS mx FROM eventconf_events) AS m,
+     eventconf_sources ps
+WHERE ps.name = 'opennms.pollerd.events'
+LIMIT 1;
+            ]]>
+        </sql>
+        <sql>
+            UPDATE eventconf_events
+            SET severity = (
+            xpath('//ns:severity/text()', xml_content::xml, ARRAY[
+            ['ns', 'http://xmlns.opennms.org/xsd/eventconf']
+            ])::text[]
+            )[1]
+            WHERE uei = 'uei.opennms.org/nodes/nodeMonitoringStopped';
+        </sql>
+        <sql>
+            UPDATE eventconf_sources
+            SET event_count = (
+                SELECT COUNT(*) FROM eventconf_events WHERE source_id = eventconf_sources.id
+            ),
+            last_modified = CURRENT_TIMESTAMP
+            WHERE name = 'opennms.pollerd.events';
+        </sql>
+        <sql>
+            SELECT setval('eventconf_events_id_seq', (SELECT COALESCE(MAX(id), 1) FROM eventconf_events));
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

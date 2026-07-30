@@ -478,6 +478,28 @@
       <alarm-data reduction-key="%uei%:%dpname%:%nodeid%" alarm-type="2" clear-key="uei.opennms.org/nodes/nodeDown:%dpname%:%nodeid%" auto-clean="false"/>
    </event>
    <event>
+      <uei>uei.opennms.org/nodes/serviceMonitoringStopped</uei>
+      <event-label>OpenNMS-defined node event: serviceMonitoringStopped</event-label>
+      <descr>Polling stopped for %service% on %interface% (no longer in a poller package); clearing its outage alarm.</descr>
+      <logmsg dest="logonly">Monitoring stopped for %service% on %interface%; clearing nodeLostService alarm.</logmsg>
+      <severity>Normal</severity>
+      <alarm-data reduction-key="%uei%:%dpname%:%nodeid%:%interface%:%service%"
+                  alarm-type="2"
+                  clear-key="uei.opennms.org/nodes/nodeLostService:%dpname%:%nodeid%:%interface%:%service%"
+                  auto-clean="false"/>
+   </event>
+   <event>
+      <uei>uei.opennms.org/nodes/nodeMonitoringStopped</uei>
+      <event-label>OpenNMS-defined node event: nodeMonitoringStopped</event-label>
+      <descr>All monitored services on node %nodeid% stopped (no longer in a poller package); clearing nodeDown.</descr>
+      <logmsg dest="logonly">Monitoring stopped for node %nodeid%; clearing nodeDown alarm.</logmsg>
+      <severity>Normal</severity>
+      <alarm-data reduction-key="%uei%:%dpname%:%nodeid%"
+                  alarm-type="2"
+                  clear-key="uei.opennms.org/nodes/nodeDown:%dpname%:%nodeid%"
+                  auto-clean="false"/>
+   </event>
+   <event>
       <uei>uei.opennms.org/nodes/primarySnmpInterfaceChanged</uei>
       <event-label>OpenNMS-defined node event: primarySnmpInterfaceChanged</event-label>
       <descr>&lt;p>This event indicates that the interface selected

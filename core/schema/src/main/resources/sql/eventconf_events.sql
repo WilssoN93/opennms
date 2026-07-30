@@ -2759,5 +2759,21 @@ INSERT INTO eventconf_events(id, source_id, uei, event_label, description, enabl
    <severity>Normal</severity>
    <alarm-data reduction-key="%source%:%snmphost%:%id%:%generic%:%specific%" alarm-type="3" auto-clean="true"/>
 </event>', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system-migration');
+INSERT INTO eventconf_events(id, source_id, uei, event_label, description, enabled, xml_content, created_time, last_modified, modified_by) VALUES (158, 15, 'uei.opennms.org/nodes/serviceMonitoringStopped', 'OpenNMS-defined node event: serviceMonitoringStopped', 'Polling stopped for %service% on %interface% (no longer in a poller package); clearing its outage alarm.', true, '<event xmlns="http://xmlns.opennms.org/xsd/eventconf">
+   <uei>uei.opennms.org/nodes/serviceMonitoringStopped</uei>
+   <event-label>OpenNMS-defined node event: serviceMonitoringStopped</event-label>
+   <descr>Polling stopped for %service% on %interface% (no longer in a poller package); clearing its outage alarm.</descr>
+   <logmsg dest="logonly">Monitoring stopped for %service% on %interface%; clearing nodeLostService alarm.</logmsg>
+   <severity>Normal</severity>
+   <alarm-data reduction-key="%uei%:%dpname%:%nodeid%:%interface%:%service%" alarm-type="2" clear-key="uei.opennms.org/nodes/nodeLostService:%dpname%:%nodeid%:%interface%:%service%" auto-clean="false"/>
+</event>', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system-migration');
+INSERT INTO eventconf_events(id, source_id, uei, event_label, description, enabled, xml_content, created_time, last_modified, modified_by) VALUES (159, 15, 'uei.opennms.org/nodes/nodeMonitoringStopped', 'OpenNMS-defined node event: nodeMonitoringStopped', 'All monitored services on node %nodeid% stopped (no longer in a poller package); clearing nodeDown.', true, '<event xmlns="http://xmlns.opennms.org/xsd/eventconf">
+   <uei>uei.opennms.org/nodes/nodeMonitoringStopped</uei>
+   <event-label>OpenNMS-defined node event: nodeMonitoringStopped</event-label>
+   <descr>All monitored services on node %nodeid% stopped (no longer in a poller package); clearing nodeDown.</descr>
+   <logmsg dest="logonly">Monitoring stopped for node %nodeid%; clearing nodeDown alarm.</logmsg>
+   <severity>Normal</severity>
+   <alarm-data reduction-key="%uei%:%dpname%:%nodeid%" alarm-type="2" clear-key="uei.opennms.org/nodes/nodeDown:%dpname%:%nodeid%" auto-clean="false"/>
+</event>', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'system-migration');
 
-ALTER SEQUENCE eventconf_events_id_seq RESTART WITH 158;
+ALTER SEQUENCE eventconf_events_id_seq RESTART WITH 160;

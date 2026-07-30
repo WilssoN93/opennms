@@ -436,6 +436,23 @@ public class EventconfFactoryIT {
         assertTrue("uei.opennms.org.testUei:localhost:1".equals(alarmData.getClearKey()));
         assertTrue("reduceme".equals(alarmData.getReductionKey()));
     }
+
+    @Test
+    public void testMonitoringStoppedClearKeys() {
+        final Event serviceStopped = m_eventConfDao.findByUei(EventConstants.SERVICE_MONITORING_STOPPED_EVENT_UEI);
+        assertNotNull(serviceStopped);
+        assertNotNull(serviceStopped.getAlarmData());
+        assertEquals(Integer.valueOf(2), serviceStopped.getAlarmData().getAlarmType());
+        assertEquals("uei.opennms.org/nodes/nodeLostService:%dpname%:%nodeid%:%interface%:%service%",
+                serviceStopped.getAlarmData().getClearKey());
+
+        final Event nodeStopped = m_eventConfDao.findByUei(EventConstants.NODE_MONITORING_STOPPED_EVENT_UEI);
+        assertNotNull(nodeStopped);
+        assertNotNull(nodeStopped.getAlarmData());
+        assertEquals(Integer.valueOf(2), nodeStopped.getAlarmData().getAlarmType());
+        assertEquals("uei.opennms.org/nodes/nodeDown:%dpname%:%nodeid%",
+                nodeStopped.getAlarmData().getClearKey());
+    }
     
     //Ensure reload does indeed reload fresh data
     @Test

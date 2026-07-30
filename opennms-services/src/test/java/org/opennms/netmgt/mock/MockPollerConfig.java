@@ -39,6 +39,7 @@ import java.util.TreeMap;
 import java.util.Vector;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 
 import org.opennms.netmgt.config.BasicScheduleUtils;
@@ -91,6 +92,8 @@ public class MockPollerConfig extends OverrideablePollOutagesDaoImpl implements 
     private boolean m_overrideFindPackageForService;
 
     private Package m_findPackageForServiceResult;
+
+    private BiFunction<String, String, Package> m_findPackageForServiceFn;
 
     private boolean m_serviceUnresponsiveEnabled = false;
 
@@ -433,11 +436,23 @@ public class MockPollerConfig extends OverrideablePollOutagesDaoImpl implements 
      */
     public void setFindPackageForServiceResult(final Package pkg) {
         m_overrideFindPackageForService = true;
+        m_findPackageForServiceFn = null;
         m_findPackageForServiceResult = pkg;
+    }
+
+    /**
+     * Forces {@link #findPackageForService(String, String)} to use a per-(ip,service) function.
+     */
+    public void setFindPackageForServiceFunction(final BiFunction<String, String, Package> findPackageForServiceFn) {
+        m_findPackageForServiceFn = findPackageForServiceFn;
+        m_overrideFindPackageForService = false;
     }
 
     @Override
     public Package findPackageForService(final String ipAddr, final String serviceName) {
+        if (m_findPackageForServiceFn != null) {
+            return m_findPackageForServiceFn.apply(ipAddr, serviceName);
+        }
         if (m_overrideFindPackageForService) {
             return m_findPackageForServiceResult;
         }

@@ -49,6 +49,7 @@ import org.opennms.netmgt.model.OnmsEvent;
 import org.opennms.netmgt.model.OnmsIpInterface;
 import org.opennms.netmgt.model.OnmsMonitoredService;
 import org.opennms.netmgt.model.OnmsOutage;
+import org.opennms.netmgt.model.events.EventBuilder;
 import org.opennms.netmgt.poller.pollables.DbPollEvent;
 import org.opennms.netmgt.poller.pollables.LockUnavailable;
 import org.opennms.netmgt.poller.pollables.PollEvent;
@@ -461,6 +462,7 @@ public class Poller extends AbstractServiceDaemon {
         }
 
         final Date closeDate = sourceEvent.getTime();
+        final MonitoringLossEmitContext emitContext = new MonitoringLossEmitContext();
 
         final Set<PollerEventProcessor.Service> databaseServices = new HashSet<>();
         for (final String[] s : m_queryManager.getNodeServices(nodeId)) {
@@ -476,10 +478,13 @@ public class Poller extends AbstractServiceDaemon {
             if (pnode.getNodeLabel() != null) {
                 nodeLabel = pnode.getNodeLabel();
             }
-            reconcileInMemoryServices(pnode, databaseServices, sourceEvent, nodeId, closeDate, rescheduleExisting);
+            reconcileInMemoryServices(pnode, databaseServices, sourceEvent, nodeId, closeDate, rescheduleExisting,
+                    emitContext);
         }
 
-        scheduleMissingDatabaseServices(nodeId, nodeLabel, nodeLocation, sourceEvent, pnode, databaseServices, closeDate);
+        scheduleMissingDatabaseServices(nodeId, nodeLabel, nodeLocation, sourceEvent, pnode, databaseServices, closeDate,
+                emitContext);
+        emitNodeMonitoringStoppedIfFullyUnmonitored(nodeId, databaseServices, emitContext);
     }
 
     /**
@@ -503,6 +508,7 @@ public class Poller extends AbstractServiceDaemon {
         }
 
         final Date closeDate = sourceEvent.getTime();
+        final MonitoringLossEmitContext emitContext = new MonitoringLossEmitContext();
         final Set<PollerEventProcessor.Service> databaseServices = new HashSet<>();
         for (final String[] s : m_queryManager.getNodeServices(nodeId)) {
             databaseServices.add(new PollerEventProcessor.Service(s));
@@ -515,7 +521,7 @@ public class Poller extends AbstractServiceDaemon {
 
         for (final PollerEventProcessor.Service databaseService : databaseServices) {
             syncDatabaseServiceToPackageResolution(nodeId, nodeLabel, nodeLocation, sourceEvent, closeDate,
-                    databaseService);
+                    databaseService, emitContext);
         }
 
         final boolean categorySync = isCategoryMembershipChangedEvent(sourceEvent);
@@ -523,12 +529,13 @@ public class Poller extends AbstractServiceDaemon {
 
         pnode = getNetwork().getNode(nodeId);
         if (pnode != null) {
-            reconcileInMemoryServices(pnode, databaseServices, sourceEvent, nodeId, closeDate, false);
+            reconcileInMemoryServices(pnode, databaseServices, sourceEvent, nodeId, closeDate, false, emitContext);
         }
 
         if (categorySync) {
             logCategorySyncResidualActiveServices(nodeId, databaseServices);
         }
+        emitNodeMonitoringStoppedIfFullyUnmonitored(nodeId, databaseServices, emitContext);
     }
 
     private void syncDatabaseServiceToPackageResolution(
@@ -537,14 +544,15 @@ public class Poller extends AbstractServiceDaemon {
             final String nodeLocation,
             final IEvent sourceEvent,
             final Date closeDate,
-            final PollerEventProcessor.Service databaseService) {
+            final PollerEventProcessor.Service databaseService,
+            final MonitoringLossEmitContext emitContext) {
         if (isCategoryMembershipChangedEvent(sourceEvent)) {
             syncDatabaseServiceForCategoryMembership(nodeId, nodeLabel, nodeLocation, sourceEvent, closeDate,
-                    databaseService);
+                    databaseService, emitContext);
             return;
         }
         syncDatabaseServiceForPackageResolution(nodeId, nodeLabel, nodeLocation, sourceEvent, closeDate,
-                databaseService);
+                databaseService, emitContext);
     }
 
     /**
@@ -557,7 +565,8 @@ public class Poller extends AbstractServiceDaemon {
             final String nodeLocation,
             final IEvent sourceEvent,
             final Date closeDate,
-            final PollerEventProcessor.Service databaseService) {
+            final PollerEventProcessor.Service databaseService,
+            final MonitoringLossEmitContext emitContext) {
         final String ipAddr = normalizeServiceAddress(databaseService.getAddress());
         final String serviceName = databaseService.getServiceName();
         final Package livePkg = m_pollerConfig.findPackageForService(ipAddr, serviceName);
@@ -567,16 +576,30 @@ public class Poller extends AbstractServiceDaemon {
                 : pnode.getService(databaseService.getInetAddress(), serviceName);
 
         if (livePkg == null) {
-            stopPollingForServiceWithoutPackage(nodeId, sourceEvent, closeDate, databaseService, pollable);
+            stopPollingForServiceWithoutPackage(nodeId, sourceEvent, closeDate, databaseService, pollable, emitContext);
             LOG.warn("Category sync for node {}: {} findPackageForService=null, pollablePresent={}, marked Not Polled.",
                     nodeId, databaseService, pollable != null && !pollable.isDeleted());
             return;
         }
 
         if (pollable == null || pollable.isDeleted()) {
-            LOG.warn("Category sync for node {}: {} has no in-memory pollable but findPackageForService={}; "
-                    + "skipping scheduleService (avoids stale package map re-activating Managed status).",
-                    nodeId, databaseService, livePkg.getName());
+            final OnmsMonitoredService dbSvc = m_monitoredServiceDao == null ? null
+                    : m_monitoredServiceDao.get(nodeId, databaseService.getInetAddress(), serviceName);
+            final String dbStatus = dbSvc == null ? null : dbSvc.getStatus();
+
+            // 'N' = category was removed earlier and the service was unscheduled. The package
+            // map was just rebuilt, so re-resolution is authoritative: schedule it (flips N->A).
+            // We still skip 'A'-with-no-pollable, which is the NMS-7761 stale-map scenario.
+            if (shouldRescheduleNotPolled(dbStatus)) {
+                LOG.info("Category sync for node {}: {} is Not Polled but now matches package {}; scheduling.",
+                        nodeId, databaseService, livePkg.getName());
+                scheduleService(nodeId, nodeLabel, nodeLocation, ipAddr, serviceName, pnode);
+                return;
+            }
+
+            LOG.warn("Category sync for node {}: {} has no in-memory pollable but findPackageForService={} "
+                    + "and DB status={}; skipping scheduleService (avoids stale package map re-activating Managed status).",
+                    nodeId, databaseService, livePkg.getName(), dbStatus);
             return;
         }
 
@@ -593,13 +616,19 @@ public class Poller extends AbstractServiceDaemon {
                 nodeId, databaseService, livePkg.getName());
     }
 
+    @VisibleForTesting
+    static boolean shouldRescheduleNotPolled(final String dbStatus) {
+        return "N".equals(dbStatus);
+    }
+
     private void syncDatabaseServiceForPackageResolution(
             final int nodeId,
             final String nodeLabel,
             final String nodeLocation,
             final IEvent sourceEvent,
             final Date closeDate,
-            final PollerEventProcessor.Service databaseService) {
+            final PollerEventProcessor.Service databaseService,
+            final MonitoringLossEmitContext emitContext) {
         final String ipAddr = normalizeServiceAddress(databaseService.getAddress());
         final String serviceName = databaseService.getServiceName();
         final Package livePkg = m_pollerConfig.findPackageForService(ipAddr, serviceName);
@@ -609,7 +638,7 @@ public class Poller extends AbstractServiceDaemon {
                 : pnode.getService(databaseService.getInetAddress(), serviceName);
 
         if (livePkg == null) {
-            stopPollingForServiceWithoutPackage(nodeId, sourceEvent, closeDate, databaseService, pollable);
+            stopPollingForServiceWithoutPackage(nodeId, sourceEvent, closeDate, databaseService, pollable, emitContext);
             return;
         }
 
@@ -636,15 +665,32 @@ public class Poller extends AbstractServiceDaemon {
             final IEvent sourceEvent,
             final Date closeDate,
             final PollerEventProcessor.Service databaseService,
-            final PollableService pollable) {
+            final PollableService pollable,
+            final MonitoringLossEmitContext emitContext) {
+        final boolean hadPollable = pollable != null && !pollable.isDeleted();
+        final boolean wasActive = hadPollable || isActiveInDatabase(nodeId, databaseService);
         markNotPolledInDatabase(nodeId, databaseService);
-        if (pollable != null && !pollable.isDeleted()) {
+        if (hadPollable) {
             LOG.warn("{} is no longer in a local polling package. Unscheduling.", databaseService);
             unschedulePollableService(pollable, sourceEvent, nodeId, closeDate, databaseService);
         } else {
             LOG.warn("{} is no longer in a local polling package. Closing any pending outages.", databaseService);
             closeOutagesForService(sourceEvent, nodeId, closeDate, databaseService);
         }
+        // Skip clear events when already Not Polled with no in-memory pollable (repeat sync/reconcile noise).
+        if (wasActive) {
+            emitServiceMonitoringStopped(nodeId, databaseService.getAddress(), databaseService.getServiceName(),
+                    emitContext);
+        }
+    }
+
+    private boolean isActiveInDatabase(final int nodeId, final PollerEventProcessor.Service databaseService) {
+        if (m_monitoredServiceDao == null) {
+            return false;
+        }
+        final OnmsMonitoredService service = m_monitoredServiceDao.get(nodeId, databaseService.getInetAddress(),
+                databaseService.getServiceName());
+        return service != null && "A".equals(service.getStatus());
     }
 
     /**
@@ -746,7 +792,8 @@ public class Poller extends AbstractServiceDaemon {
             final IEvent sourceEvent,
             final int nodeId,
             final Date closeDate,
-            final boolean rescheduleExisting) {
+            final boolean rescheduleExisting,
+            final MonitoringLossEmitContext emitContext) {
         for (final PollableInterface iface : pnode.getInterfaces()) {
             final List<PollableService> services = new ArrayList<>(iface.getServices());
             for (final PollableService svc : services) {
@@ -762,10 +809,13 @@ public class Poller extends AbstractServiceDaemon {
                         if (databaseServices.contains(serviceKey)) {
                             markNotPolledInDatabase(nodeId, serviceKey);
                         }
+                        unschedulePollableService(svc, sourceEvent, nodeId, closeDate, serviceKey);
+                        emitServiceMonitoringStopped(nodeId, serviceKey.getAddress(), serviceKey.getServiceName(),
+                                emitContext);
                     } else {
                         LOG.debug("{} is being unscheduled during reconcile.", serviceKey);
+                        unschedulePollableService(svc, sourceEvent, nodeId, closeDate, serviceKey);
                     }
-                    unschedulePollableService(svc, sourceEvent, nodeId, closeDate, serviceKey);
                 }
             }
         }
@@ -778,7 +828,8 @@ public class Poller extends AbstractServiceDaemon {
             final IEvent sourceEvent,
             PollableNode pnode,
             final Set<PollerEventProcessor.Service> databaseServices,
-            final Date closeDate) {
+            final Date closeDate,
+            final MonitoringLossEmitContext emitContext) {
         for (final PollerEventProcessor.Service databaseService : databaseServices) {
             pnode = getNetwork().getNode(nodeId);
             if (isStillScheduled(pnode, databaseService)) {
@@ -791,8 +842,13 @@ public class Poller extends AbstractServiceDaemon {
                     databaseService.getServiceName(), pnode);
             if (!hasLocalPollingPackage(databaseService.getAddress(), databaseService.getServiceName())) {
                 LOG.warn("{} is no longer in a local polling package. Closing any pending outages.", databaseService);
+                final boolean wasActive = isActiveInDatabase(nodeId, databaseService);
                 closeOutagesForService(sourceEvent, nodeId, closeDate, databaseService);
                 markNotPolledInDatabase(nodeId, databaseService);
+                if (wasActive) {
+                    emitServiceMonitoringStopped(nodeId, databaseService.getAddress(), databaseService.getServiceName(),
+                            emitContext);
+                }
             }
         }
     }
@@ -853,6 +909,62 @@ public class Poller extends AbstractServiceDaemon {
 
     private void markNotPolledInDatabase(final int nodeId, final PollerEventProcessor.Service serviceKey) {
         m_queryManager.updateServiceStatus(nodeId, serviceKey.getAddress(), serviceKey.getServiceName(), "N");
+    }
+
+    /**
+     * Tracks monitoring-loss clear events for a single sync/reconcile pass so each service is
+     * cleared once and nodeDown is only cleared when this pass actually stopped monitoring.
+     */
+    private static final class MonitoringLossEmitContext {
+        private final Set<String> emittedServiceKeys = new HashSet<>();
+
+        boolean markServiceEmitted(final int nodeId, final String ipAddr, final String svcName) {
+            return emittedServiceKeys.add(nodeId + "|" + normalizeServiceAddress(ipAddr) + "|" + svcName);
+        }
+
+        boolean didStopAnyService() {
+            return !emittedServiceKeys.isEmpty();
+        }
+    }
+
+    /** Clear the monitoring-derived alarm for a service we are intentionally no longer polling. */
+    private void emitServiceMonitoringStopped(
+            final int nodeId,
+            final String ipAddr,
+            final String svcName,
+            final MonitoringLossEmitContext emitContext) {
+        if (m_eventMgr == null) {
+            return;
+        }
+        if (emitContext != null && !emitContext.markServiceEmitted(nodeId, ipAddr, svcName)) {
+            return;
+        }
+        final EventBuilder bldr = new EventBuilder(EventConstants.SERVICE_MONITORING_STOPPED_EVENT_UEI, "OpenNMS.Poller");
+        bldr.setNodeid(nodeId);
+        bldr.setInterface(InetAddressUtils.addr(normalizeServiceAddress(ipAddr)));
+        bldr.setService(svcName);
+        m_eventMgr.sendNow(bldr.getEvent());
+    }
+
+    /**
+     * Clear nodeDown once the node has no remaining monitored (local-package) services,
+     * but only if this pass stopped monitoring at least one service.
+     */
+    private void emitNodeMonitoringStoppedIfFullyUnmonitored(
+            final int nodeId,
+            final Set<PollerEventProcessor.Service> databaseServices,
+            final MonitoringLossEmitContext emitContext) {
+        if (m_eventMgr == null || emitContext == null || !emitContext.didStopAnyService()) {
+            return;
+        }
+        final boolean anyStillMonitored = databaseServices.stream()
+                .anyMatch(s -> hasLocalPollingPackage(s.getAddress(), s.getServiceName()));
+        if (anyStillMonitored) {
+            return;
+        }
+        final EventBuilder bldr = new EventBuilder(EventConstants.NODE_MONITORING_STOPPED_EVENT_UEI, "OpenNMS.Poller");
+        bldr.setNodeid(nodeId);
+        m_eventMgr.sendNow(bldr.getEvent());
     }
 
     public void scheduleService(final int nodeId, final String nodeLabel, final String nodeLocation, final String ipAddr, final String svcName, PollableNode pollableNode) {
