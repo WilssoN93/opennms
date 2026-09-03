@@ -114,10 +114,11 @@ public class EventDaoHibernate extends AbstractDaoHibernate<OnmsEvent, Long> imp
             for (final List<Long> batch : Lists.partition(ids, EVENT_ID_QUERY_BATCH_SIZE)) {
                 final Query q = session.createQuery(hql).setParameterList("eventIds", batch);
                 final List<Object[]> rows = q.list();
-                result.putAll(rows.stream().collect(Collectors.groupingBy(
+                final Map<Long, List<OnmsEventParameter>> batchResult = rows.stream().collect(Collectors.groupingBy(
                         row -> (Long) row[0],
                         LinkedHashMap::new,
-                        Collectors.mapping(row -> (OnmsEventParameter) row[1], Collectors.toCollection(ArrayList::new)))));
+                        Collectors.mapping(row -> (OnmsEventParameter) row[1], Collectors.toCollection(ArrayList::new))));
+                result.putAll(batchResult);
             }
             return result;
         });
