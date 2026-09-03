@@ -47,7 +47,9 @@ public interface EventDao extends LegacyOnmsDao<OnmsEvent, Long> {
     List<OnmsEvent> getEventsForEventParameters(final Map<String, String> eventParameters);
 
     /**
-     * Batch-load event parameters for the given event IDs in a single query.
+     * Batch-load event parameters for the given event IDs.
+     * Large ID sets are split across multiple queries to stay under the PostgreSQL
+     * bind-parameter limit (used by alarmd seed and periodic snapshots).
      * Returns a map from event ID to list of parameters (ordered by position).
      * Callers can attach these lists to OnmsEvent entities to avoid N+1 lazy loads.
      *

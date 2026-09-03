@@ -40,7 +40,15 @@ import org.opennms.netmgt.model.OnmsEventParameter;
 import org.springframework.dao.DataAccessException;
 import org.springframework.orm.hibernate3.HibernateCallback;
 
+import com.google.common.collect.Lists;
+
 public class EventDaoHibernate extends AbstractDaoHibernate<OnmsEvent, Long> implements EventDao {
+
+    /**
+     * Max IDs per IN-clause query. PostgreSQL rejects more than ~65k bind parameters;
+     * stay under that for alarmd seed / snapshot loads.
+     */
+    static final int EVENT_ID_QUERY_BATCH_SIZE = 30_000;
 
 	public EventDaoHibernate() {
 		super(OnmsEvent.class);
@@ -100,13 +108,18 @@ public class EventDaoHibernate extends AbstractDaoHibernate<OnmsEvent, Long> imp
             return new LinkedHashMap<>();
         }
         final String hql = "select p.event.id, p from OnmsEventParameter p where p.event.id in (:eventIds) order by p.event.id, p.position";
+        final List<Long> ids = new ArrayList<>(eventIds);
         return getHibernateTemplate().execute(session -> {
-            Query q = session.createQuery(hql).setParameterList("eventIds", eventIds);
-            List<Object[]> rows = q.list();
-            return rows.stream().collect(Collectors.groupingBy(
-                    row -> (Long) row[0],
-                    LinkedHashMap::new,
-                    Collectors.mapping(row -> (OnmsEventParameter) row[1], Collectors.toCollection(ArrayList::new))));
+            final Map<Long, List<OnmsEventParameter>> result = new LinkedHashMap<>();
+            for (final List<Long> batch : Lists.partition(ids, EVENT_ID_QUERY_BATCH_SIZE)) {
+                final Query q = session.createQuery(hql).setParameterList("eventIds", batch);
+                final List<Object[]> rows = q.list();
+                result.putAll(rows.stream().collect(Collectors.groupingBy(
+                        row -> (Long) row[0],
+                        LinkedHashMap::new,
+                        Collectors.mapping(row -> (OnmsEventParameter) row[1], Collectors.toCollection(ArrayList::new)))));
+            }
+            return result;
         });
     }
 
